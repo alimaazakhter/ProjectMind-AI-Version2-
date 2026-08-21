@@ -1,0 +1,317 @@
+/* ============================================================
+   AI Auto Project Generator — Custom Streamlit Theme
+   Option 1: Dark Modern (Professional & Clean)
+   ============================================================ */
+
+/* ---------- Google Fonts ---------- */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+/* ---------- page-wide background ---------- */
+.stApp {
+    background-color: #0f172a;  /* deep navy/charcoal */
+    background-image: none;     /* removing blue gradient completely */
+    color: #f8fafc;
+    font-family: 'Inter', 'Segoe UI', sans-serif;
+}
+
+/* ---------- sidebar ---------- */
+section[data-testid="stSidebar"] {
+    background-color: #1e293b;
+    border-right: 1px solid #334155;
+}
+
+section[data-testid="stSidebar"] .stSelectbox label,
+section[data-testid="stSidebar"] .stRadio label,
+section[data-testid="stSidebar"] .stMultiSelect label,
+section[data-testid="stSidebar"] .stTextInput label,
+section[data-testid="stSidebar"] .stTextArea label,
+section[data-testid="stSidebar"] .stCheckbox label {
+    color: #cbd5e1 !important;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+
+/* Expanders in sidebar */
+section[data-testid="stSidebar"] details[data-testid="stExpander"] {
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    margin-bottom: 0.5rem;
+    transition: all 0.3s ease;
+}
+
+section[data-testid="stSidebar"] details[data-testid="stExpander"] summary {
+    font-weight: 700;
+    color: #a855f7;
+    padding: 0.7rem 1rem;
+    font-size: 0.9rem;
+}
+
+/* ---------- header area ---------- */
+.main-header {
+    text-align: center;
+    padding: 3rem 1rem 2rem;
+    animation: fadeInDown 0.8s ease-out;
+}
+
+@keyframes fadeInDown {
+    from { opacity: 0; transform: translateY(-20px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.main-header h1 {
+    color: #f8fafc;
+    font-size: 2.8rem;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    margin-bottom: 0.5rem;
+}
+
+/* highlight accent for header */
+.main-header h1::after {
+    content: '';
+    display: block;
+    width: 60px;
+    height: 4px;
+    background: #a855f7;
+    margin: 12px auto 0;
+    border-radius: 4px;
+}
+
+.main-header p {
+    color: #94a3b8;
+    font-size: 1.1rem;
+    margin-top: 0;
+}
+
+/* brand badge styling */
+.brand-badge {
+    display: inline-block;
+    background: rgba(168, 85, 247, 0.15);
+    color: #d8b4fe;
+    border: 1px solid rgba(168, 85, 247, 0.4);
+    padding: 0.35rem 1rem;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.8rem;
+    box-shadow: 0 0 12px rgba(168, 85, 247, 0.15);
+}
+
+/* ---------- Section Cards Container (Custom) ---------- */
+.section-card {
+    background-color: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 14px;
+    padding: 1.5rem 1.8rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    margin-bottom: 0;
+}
+
+/* ---------- Header Typography ---------- */
+h1, h2, h3 {
+    color: #f8fafc !important;
+    font-weight: 700 !important;
+    margin-bottom: 1rem;
+}
+
+h3 {
+    color: #a855f7 !important;
+    font-size: 1.4rem !important;
+    border-bottom: 1px solid #334155;
+    padding-bottom: 0.5rem;
+    margin-top: 0;
+}
+
+/* ---------- Text Areas (Scrollable content) ---------- */
+div[data-testid="stTextArea"] textarea {
+    background-color: #0f172a !important;
+    border: 1px solid #334155 !important;
+    border-radius: 10px !important;
+    color: #f8fafc !important;
+    padding: 1rem !important;
+    font-size: 0.95rem !important;
+    line-height: 1.6 !important;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+div[data-testid="stTextArea"] textarea:focus {
+    border-color: #a855f7 !important;
+    box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.25) !important;
+}
+
+/* ---------- Base Buttons ---------- */
+div.stButton > button {
+    background-color: #1e293b;
+    color: #f8fafc;
+    border: 1px solid #475569;
+    border-radius: 8px;
+    padding: 0.6rem 1.2rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    width: 100%;
+}
+
+div.stButton > button:hover {
+    background-color: #334155;
+    border-color: #94a3b8;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+div.stButton > button:active {
+    transform: scale(0.98);
+}
+
+/* ---------- Primary Button (.stButton[type="primary"]) ---------- */
+div.stButton > button[data-testid="baseButton-primary"] {
+    background-color: #a855f7 !important;
+    border: none !important;
+    color: #ffffff !important;
+    box-shadow: 0 4px 14px rgba(168, 85, 247, 0.25) !important;
+}
+
+div.stButton > button[data-testid="baseButton-primary"]:hover {
+    background-color: #9333ea !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 6px 20px rgba(168, 85, 247, 0.35) !important;
+}
+
+/* ---------- download buttons ---------- */
+div.stDownloadButton > button {
+    background-color: #0f172a !important;
+    color: #38bdf8 !important;
+    border: 1px solid #38bdf8 !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    transition: all 0.2s ease !important;
+}
+
+div.stDownloadButton > button:hover {
+    background-color: #38bdf8 !important;
+    color: #0f172a !important;
+    transform: translateY(-2px) !important;
+}
+
+/* ---------- progress bar ---------- */
+div[data-testid="stProgress"] > div > div {
+    background-color: #a855f7 !important;
+    border-radius: 8px;
+    transition: width 0.4s ease;
+}
+
+/* ---------- spinner ---------- */
+.stSpinner > div {
+    border-color: #a855f7 !important;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 0.6; }
+    50%      { opacity: 1; }
+}
+
+.stSpinner {
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* ---------- info / warning banners ---------- */
+div[data-testid="stAlert"] {
+    border-radius: 12px;
+    border-left: 4px solid #a855f7;
+    background-color: #1e293b;
+    border: 1px solid #334155;
+    border-left-width: 4px;
+    border-left-color: #a855f7;
+}
+
+/* ---------- Links ---------- */
+a {
+    color: #c084fc;
+    transition: color 0.2s ease;
+}
+
+a:hover {
+    color: #d8b4fe;
+}
+
+/* ---------- scrollbar ---------- */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: #0f172a;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #475569;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #a855f7;
+}
+
+/* ---------- section divider ---------- */
+hr {
+    border: none;
+    height: 1px;
+    background-color: #334155;
+    margin: 2rem 0;
+}
+
+/* ---------- columns / cards layout ---------- */
+div[data-testid="column"] {
+    padding: 0.3rem;
+}
+
+/* ---------- toggle (switch) ---------- */
+div[data-testid="stToggle"] label span {
+    color: #e2e8f0 !important;
+    font-weight: 600;
+}
+
+/* ---------- checkbox ---------- */
+div[data-testid="stCheckbox"] label span[data-testid="stCheckbox-label"] {
+    color: #cbd5e1;
+    font-size: 0.95rem;
+}
+
+/* ---------- code blocks / snippet display ---------- */
+code {
+    background: #1e293b;
+    color: #d8b4fe;
+    border-radius: 4px;
+    padding: 0.15rem 0.4rem;
+    font-size: 0.9em;
+}
+
+pre {
+    background-color: #0f172a !important;
+    border: 1px solid #334155 !important;
+    border-radius: 8px !important;
+}
+
+/* ---------- footer ---------- */
+.footer {
+    text-align: center;
+    padding: 3rem 0 1.5rem;
+    color: #64748b;
+    font-size: 0.85rem;
+    border-top: 1px solid #1e293b;
+    margin-top: 2rem;
+}
+
+/* ---------- responsive helpers ---------- */
+@media (max-width: 768px) {
+    .main-header h1 {
+        font-size: 2rem;
+    }
+    .main-header p {
+        font-size: 0.95rem;
+    }
+}
