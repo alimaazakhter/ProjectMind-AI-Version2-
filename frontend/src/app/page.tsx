@@ -50,11 +50,8 @@ export default function LandingPage() {
       <header className="sticky top-0 z-50 bg-[#FAF8F5] border-b border-[#E5E0D7]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-md bg-[#7A263A] flex items-center justify-center text-white shadow-xs">
-              <Sparkles className="w-4 h-4" />
-            </div>
-            <span className="text-base font-bold tracking-tight text-[#202020]">
+          <Link href="/" className="flex items-center group">
+            <span className="text-lg sm:text-xl font-black tracking-tight text-[#202020] transition-colors group-hover:text-[#7A263A]">
               ProjectMind <span className="text-[#7A263A]">AI</span>
             </span>
           </Link>
@@ -690,11 +687,10 @@ async def audit_code(snippet: str):
           <div className="grid grid-cols-1 md:grid-cols-12 gap-8 mb-12">
             {/* Brand Column */}
             <div className="md:col-span-5 space-y-3">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-md bg-[#7A263A] flex items-center justify-center text-white shadow-xs">
-                  <Sparkles className="w-3.5 h-3.5" />
-                </div>
-                <span className="font-bold text-[#202020] text-base tracking-tight">ProjectMind AI</span>
+              <div className="flex items-center">
+                <span className="font-black text-[#202020] text-lg tracking-tight">
+                  ProjectMind <span className="text-[#7A263A]">AI</span>
+                </span>
               </div>
               <p className="text-xs text-[#6B6862] max-w-sm leading-relaxed">
                 From idea to implementation. An autonomous project planning and architecture platform for students, developers, and project teams.
