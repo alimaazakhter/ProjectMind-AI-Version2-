@@ -44,7 +44,7 @@ class GeminiService:
                 },
             )
 
-            response = model.generate_content(prompt)
+            response = await model.generate_content_async(prompt)
             raw_text = response.text.strip()
             
             # Clean possible markdown wrapping
@@ -81,7 +81,7 @@ class GeminiService:
                     "max_output_tokens": 1024,
                 },
             )
-            response = model.generate_content(prompt)
+            response = await model.generate_content_async(prompt)
             return response.text.strip()
         except Exception as err:
             logger.error(f"Gemini text generation failed: {err}")
