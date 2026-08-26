@@ -4,36 +4,63 @@ import { ProjectBlueprint, ProjectRequirement } from '../models/project.types.js
 import { ChatMessage } from '../models/chat.types.js';
 
 export class FastAPIService {
-  private static baseURL = env.FASTAPI_URL;
+  private static baseURL = env.FASTAPI_URL || 'http://localhost:8000/api/v1/ai';
 
   /**
    * Forward generation request to Python FastAPI microservice (Phase 3).
-   * Includes fallback synthesis if FastAPI service is offline during Phase 2 testing.
+   * Parses validated multi-agent output from Gemini.
    */
   static async generateBlueprint(payload: ProjectRequirement, userId: string): Promise<Omit<ProjectBlueprint, 'id' | 'created_at' | 'updated_at'>> {
     try {
-      const response = await axios.post(`${this.baseURL}/generate-blueprint`, payload, {
-        timeout: 10000,
+      const response = await axios.post(`${this.baseURL}/generate`, {
+        titleIdea: payload.titleIdea || payload.domain,
+        domain: payload.domain,
+        skillLevel: payload.skillLevel || 'intermediate',
+        preferredTech: payload.preferredTech || [],
+        complexity: payload.complexity || 'Production Grade Architecture',
+        agentMode: payload.agentMode || 'multi',
+        customRequirements: payload.customRequirements || null,
+      }, {
+        timeout: 25000,
         headers: { 'Content-Type': 'application/json' },
       });
 
-      return response.data;
-    } catch (error) {
-      console.warn('ℹ️ FastAPI worker offline or unreachable at', this.baseURL, '— synthesizing blueprint via Express backend layer.');
+      const data = response.data;
+      return {
+        user_id: userId,
+        title: data.title || payload.titleIdea,
+        tagline: data.tagline || '',
+        domain: data.domain || payload.domain,
+        complexity: data.complexity || payload.complexity,
+        agent_mode: data.agent_mode || payload.agentMode,
+        problem_statement: data.problem_statement || '',
+        objectives: data.objectives || [],
+        features: data.features || [],
+        tech_stack: data.tech_stack || [],
+        architecture: data.architecture || { summary: '', components: [], diagramDescription: '' },
+        datasets: data.datasets || [],
+        research_references: data.research_references || [],
+        roadmap: data.roadmap || [],
+        viva_questions: data.viva_questions || [],
+        starter_code: data.starter_code || [],
+        uniquifier_suggestions: data.uniquifier_suggestions || [],
+      };
+    } catch (error: any) {
+      console.warn('ℹ️ FastAPI worker offline or error at', this.baseURL, '— falling back to Express synthesizer:', error.message);
 
-      // Synthesize clean production-grade blueprint structure
-      const title = payload.titleIdea?.trim() || `${payload.domain.split('&')[0].trim()} Intelligent Engine`;
+      // Fallback synthesizer
+      const title = payload.titleIdea?.trim() || `${payload.domain.split('&')[0].trim()} Intelligent Platform`;
       
       return {
         user_id: userId,
         title,
-        tagline: `A robust ${payload.complexity.toLowerCase()} system built with ${payload.preferredTech.slice(0, 3).join(', ') || 'modern technologies'}.`,
+        tagline: `A robust ${payload.complexity.toLowerCase()} system built with ${payload.preferredTech?.slice(0, 3).join(', ') || 'modern technologies'}.`,
         domain: payload.domain,
         complexity: payload.complexity,
         agent_mode: payload.agentMode,
         problem_statement: `In modern ${payload.domain.toLowerCase()}, conventional static approaches struggle with scalability, dynamic intent handling, and security auditing. This project proposes an autonomous architecture to streamline execution and improve reliability.`,
         objectives: [
-          `Architect a high-performance decoupled pipeline utilizing ${payload.preferredTech[0] || 'Next.js'} and ${payload.preferredTech[1] || 'Python'}.`,
+          `Architect a high-performance decoupled pipeline utilizing ${payload.preferredTech?.[0] || 'Next.js'} and ${payload.preferredTech?.[1] || 'Python'}.`,
           'Implement modular data validation, persistent database models, and role-based access control.',
           'Optimize throughput and latency under high concurrency benchmark workloads.',
           'Prepare comprehensive evaluation documentation, viva defense matrices, and starter code scaffolding.',
@@ -43,7 +70,7 @@ export class FastAPIService {
           { title: 'Multi-Agent Intent Orchestration', description: 'Coordinated execution of Planner, Inspector, and Formatter modules.', priority: 'high' },
           { title: 'Telemetry & Analytics Engine', description: 'Provides real-time system monitoring, latency metrics, and audit logs.', priority: 'medium' },
         ],
-        tech_stack: payload.preferredTech.length > 0
+        tech_stack: payload.preferredTech && payload.preferredTech.length > 0
           ? payload.preferredTech.map((tech, idx) => ({
               category: idx === 0 ? 'Frontend/Client' : idx === 1 ? 'Backend API' : idx === 2 ? 'AI Engine/ML' : 'Storage/Infra',
               item: tech,
@@ -93,35 +120,31 @@ export class FastAPIService {
   /**
    * Forward chat prompt to Python FastAPI intent classifier & assistant.
    */
-  static async sendChatMessage(prompt: string): Promise<ChatMessage> {
+  static async sendChatMessage(prompt: string, projectId?: string, history?: any[]): Promise<ChatMessage> {
     try {
-      const response = await axios.post(`${this.baseURL}/chat`, { prompt }, {
-        timeout: 8000,
+      const response = await axios.post(`${this.baseURL}/chat`, {
+        prompt,
+        projectId: projectId || null,
+        conversationHistory: history || [],
+      }, {
+        timeout: 10000,
         headers: { 'Content-Type': 'application/json' },
       });
 
-      return response.data;
+      const res = response.data;
+      return {
+        id: `msg-${Date.now()}`,
+        sender: 'assistant',
+        content: res.content,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        intentClassification: {
+          intent: res.intent || 'project_inquiry',
+          confidence: res.confidence || 0.95,
+          explanation: `Classified by FastAPI as ${res.intent}`,
+        },
+      };
     } catch {
       // Fallback intent classification
-      const lower = prompt.toLowerCase();
-      const projectKeywords = ['project', 'idea', 'code', 'python', 'react', 'next', 'database', 'viva', 'architecture', 'roadmap', 'ai', 'stack', 'dataset'];
-      const isRelated = projectKeywords.some((k) => lower.includes(k));
-
-      if (!isRelated) {
-        return {
-          id: `msg-${Date.now()}`,
-          sender: 'assistant',
-          content: '⚠️ Please ask a project-related question. I can assist you with project ideas, architecture design, tech stacks, roadmaps, viva preparation, or documentation.',
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          isOffTopic: true,
-          intentClassification: {
-            intent: 'unrelated',
-            confidence: 0.95,
-            explanation: 'Query does not match technical project topics.',
-          },
-        };
-      }
-
       return {
         id: `msg-${Date.now()}`,
         sender: 'assistant',
