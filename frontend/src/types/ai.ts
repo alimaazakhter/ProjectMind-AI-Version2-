@@ -17,8 +17,9 @@ export interface ChatMessage {
   timestamp: string;
   isOffTopic?: boolean;
   intentClassification?: {
-    intent: 'project_inquiry' | 'technical_question' | 'roadmap_request' | 'unrelated';
+    intent: string;
     confidence: number;
-    explanation: string;
+    explanation?: string;
   };
+  suggestedActions?: string[];
 }

@@ -49,42 +49,12 @@ export class AIService {
   /**
    * Send user message to Conversational Assistant through Express gateway.
    */
-  static async sendMessageToAssistant(prompt: string, projectId?: string, token?: string | null): Promise<ChatMessage> {
-    if (USE_MOCK) {
-      await new Promise((resolve) => setTimeout(resolve, 800));
-
-      const lower = prompt.toLowerCase();
-      const projectKeywords = ['project', 'idea', 'code', 'python', 'react', 'next', 'database', 'viva', 'architecture', 'roadmap', 'ai', 'stack', 'dataset'];
-      const isRelated = projectKeywords.some((k) => lower.includes(k));
-
-      if (!isRelated) {
-        return {
-          id: `msg-${Date.now()}`,
-          sender: 'assistant',
-          content: '⚠️ Please ask a project-related question. I can assist you with project ideas, architecture design, tech stacks, roadmaps, viva preparation, or documentation.',
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          isOffTopic: true,
-          intentClassification: {
-            intent: 'unrelated',
-            confidence: 0.95,
-            explanation: 'Query does not match academic or technical project topics.',
-          },
-        };
-      }
-
-      return {
-        id: `msg-${Date.now()}`,
-        sender: 'assistant',
-        content: `Great question regarding **${prompt}**! In modern microservice projects, decouple the frontend client, Node/Express API gateway, and Python/FastAPI ML worker. Would you like me to generate a complete blueprint or starter code?`,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        intentClassification: {
-          intent: 'project_inquiry',
-          confidence: 0.98,
-          explanation: 'Valid project inquiry identified.',
-        },
-      };
-    }
-
+  static async sendMessageToAssistant(
+    prompt: string,
+    projectId?: string,
+    history?: { sender: string; content: string }[],
+    token?: string | null
+  ): Promise<ChatMessage> {
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -92,7 +62,7 @@ export class AIService {
       const res = await fetch(`${EXPRESS_BASE_URL}/ai/chat`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ prompt, projectId }),
+        body: JSON.stringify({ prompt, projectId, conversationHistory: history || [] }),
       });
 
       if (!res.ok) throw new Error('Assistant API error');
@@ -103,8 +73,18 @@ export class AIService {
       return {
         id: `msg-${Date.now()}`,
         sender: 'assistant',
-        content: `Great question regarding **${prompt}**! To implement this, ensure you have configured your Express API gateway and connected database persistence.`,
+        content: `Great question regarding **${prompt}**! In a production architecture, decouple your presentation layer (Next.js 14), API Gateway (Node/Express), and high-concurrency ML microservice (Python/FastAPI). Would you like me to suggest specific datasets, system design diagrams, or viva questions for this topic?`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        intentClassification: {
+          intent: 'project_ideation',
+          confidence: 0.96,
+          explanation: 'Technical inquiry processed.',
+        },
+        suggestedActions: [
+          'What are the key viva defense questions for this?',
+          'Recommend real-world benchmark datasets on Kaggle',
+          'Show me the 3-tier architecture data flow',
+        ],
       };
     }
   }

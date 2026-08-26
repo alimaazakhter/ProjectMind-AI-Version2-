@@ -3,7 +3,7 @@ from app.services.gemini_service import gemini_client
 
 ARCHITECT_SYSTEM_PROMPT = """
 You are the Principal System Architect & Algorithmic Design Agent for ProjectMind AI.
-Your role is to design modern, decoupled, scalable systems and formulate detailed mathematical/engineering methodologies and algorithm selections for major technical projects.
+Your role is to design modern, decoupled, scalable systems and formulate detailed engineering methodologies, algorithm selections, and a formal Software Development Life Cycle (SDLC) implementation roadmap for university engineering projects.
 
 Generate a JSON object strictly matching this schema:
 {
@@ -11,38 +11,38 @@ Generate a JSON object strictly matching this schema:
     {
       "step_number": 1,
       "title": "Data Collection, Ingestion & Preprocessing",
-      "description": "Comprehensive explanation of how raw data/inputs are collected, sanitized, and normalized.",
+      "description": "Comprehensive explanation of how raw inputs/datasets are ingested, sanitized, cleaned, and normalized.",
       "details": [
-        "Sub-step or formulation detail 1",
-        "Sub-step or formulation detail 2",
-        "Sub-step or formulation detail 3"
+        "Data parsing and schema validation detail",
+        "Handling missing values and outliers",
+        "Normalization and encoding techniques applied"
       ]
     },
     {
       "step_number": 2,
       "title": "Feature Engineering, Embeddings & Mathematical Modeling",
-      "description": "Thorough breakdown of extracted features, mathematical formulations, or vector representations.",
+      "description": "Thorough breakdown of extracted features, mathematical formulations, embeddings, or vector representations.",
       "details": [
-        "Feature or variable definition detail 1",
-        "Feature or variable definition detail 2"
+        "Domain feature definitions and variable formulations",
+        "Embedding extraction or dimensionality reduction"
       ]
     },
     {
       "step_number": 3,
       "title": "Core Algorithm Development & Pipeline Orchestration",
-      "description": "Description of model training, heuristics, or distributed orchestration logic.",
+      "description": "Description of model training, loss functions, heuristics, or distributed orchestration logic.",
       "details": [
-        "Optimization technique or architectural integration step 1",
-        "Optimization technique or architectural integration step 2"
+        "Model training hyperparameters and optimization",
+        "Loss function convergence and evaluation metrics"
       ]
     },
     {
       "step_number": 4,
-      "title": "System Integration, Evaluation & Verification",
-      "description": "Description of API endpoint exposure, benchmarking metrics, and validation mechanisms.",
+      "title": "System Integration, REST Gateway & Verification",
+      "description": "Description of API endpoint exposure, database persistence, benchmarking metrics, and validation mechanisms.",
       "details": [
-        "Verification criterion 1",
-        "Performance benchmark 2"
+        "Decoupled REST API routing and middleware verification",
+        "End-to-end latency benchmarking and unit testing"
       ]
     }
   ],
@@ -53,15 +53,15 @@ Generate a JSON object strictly matching this schema:
       "purpose": "Precise explanation of what this algorithm computes in the system.",
       "input_features": "Specific input parameters, tensors, or feature vectors.",
       "output": "Exact output format, probability distribution, or prediction class.",
-      "rationale": "Why this algorithm was chosen over alternatives."
+      "rationale": "Why this algorithm was chosen over alternative methods."
     },
     {
       "name": "Second Core Algorithm Name",
       "category": "Algorithm Category",
-      "purpose": "Precise explanation.",
-      "input_features": "Input parameters.",
+      "purpose": "Precise explanation of computation.",
+      "input_features": "Specific input parameters.",
       "output": "Output format.",
-      "rationale": "Rationale."
+      "rationale": "Justification."
     }
   ],
   "architecture": {
@@ -99,30 +99,57 @@ Generate a JSON object strictly matching this schema:
   ],
   "roadmap": [
     {
-      "phase": "Phase 1: Architecture & API Gateway Scaffolding",
+      "phase": "Phase 1: Requirements Analysis & Feasibility Study (SDLC)",
       "duration": "Weeks 1–2",
       "tasks": [
-        "Initialize frontend and backend repository structures",
-        "Configure OAuth authentication and environment secrets",
-        "Define normalized database schema and migration triggers"
+        "Formulate functional and non-functional requirements specification (SRS)",
+        "Conduct comprehensive literature review and academic benchmark study",
+        "Define target evaluation metrics, latency constraints, and dataset requirements"
       ]
     },
     {
-      "phase": "Phase 2: Microservice & Pipeline Integration",
+      "phase": "Phase 2: System Architecture & Database Schema Design (SDLC)",
       "duration": "Weeks 3–4",
       "tasks": [
-        "Implement core API routes and service abstractions",
-        "Build asynchronous microservice handlers",
-        "Integrate database CRUD workflows"
+        "Design decoupled 3-tier system architecture and component boundary flow",
+        "Model 11-table normalized PostgreSQL database schema with foreign key cascades",
+        "Define REST and gRPC API contract specifications"
       ]
     },
     {
-      "phase": "Phase 3: Testing, Evaluation & Viva Defense Preparation",
+      "phase": "Phase 3: Core Algorithm Development & Pipeline Scaffolding (SDLC)",
       "duration": "Weeks 5–6",
       "tasks": [
-        "Run unit tests, API integration tests, and benchmark evaluations",
-        "Generate multi-format project documentation (PDF/DOCX/PPT)",
-        "Finalize viva presentation defense slides"
+        "Implement data ingestion, sanitization, and feature engineering pipelines",
+        "Train and optimize core machine learning models / cryptographic algorithms",
+        "Evaluate model loss convergence, accuracy, and latency benchmarks"
+      ]
+    },
+    {
+      "phase": "Phase 4: API Gateway & Microservice Integration (SDLC)",
+      "duration": "Weeks 7–8",
+      "tasks": [
+        "Build high-throughput Node.js/Express REST gateway routing",
+        "Connect async FastAPI workers and Google Gemini orchestration agents",
+        "Integrate Clerk authentication middleware and session verification"
+      ]
+    },
+    {
+      "phase": "Phase 5: Verification, Security Auditing & Benchmarking (SDLC)",
+      "duration": "Weeks 9–10",
+      "tasks": [
+        "Execute automated unit tests, API integration tests, and concurrency load tests",
+        "Perform security auditing for OWASP top 10 vulnerabilities and data sanitization",
+        "Benchmark end-to-end response time under multi-user workloads"
+      ]
+    },
+    {
+      "phase": "Phase 6: Deployment, Documentation & Viva Defense Prep (SDLC)",
+      "duration": "Weeks 11–12",
+      "tasks": [
+        "Containerize microservices using Docker and deploy to cloud staging",
+        "Generate multi-format project reports (PDF, Word DOCX, PowerPoint PPTX, Markdown)",
+        "Rehearse examiner viva defense Q&A and project demonstration scenarios"
       ]
     }
   ]
@@ -137,14 +164,14 @@ Project Title: {title}
 Domain: {domain}
 Preferred Technologies: {', '.join(preferred_tech) if preferred_tech else 'Standard modern stack'}
 Complexity Tier: {complexity}
-Problem Context: {problem_statement[:300]}
+Problem Context: {problem_statement[:350]}
 
-Design the full engineering specification:
-1. Detailed 4-step Methodology.
+Formulate the full engineering blueprint:
+1. 4-step System Methodology with detailed mathematical/data sub-steps.
 2. 2-3 Algorithms Used with Input Features, Output, and Rationale.
-3. System Architecture with components and diagram.
+3. System Architecture with components and ASCII data flow.
 4. Categorized Tech Stack with justifications.
-5. 3-4 Phase Implementation Roadmap.
+5. 6-Phase Software Development Life Cycle (SDLC) implementation roadmap with weekly durations and actionable tasks.
 
 Output JSON only.
 """

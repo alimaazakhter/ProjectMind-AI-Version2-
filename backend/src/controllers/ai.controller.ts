@@ -43,8 +43,8 @@ export class AIController {
         content: prompt,
       });
 
-      // 2. Query FastAPI assistant with intent classification
-      const assistantResponse = await FastAPIService.sendChatMessage(prompt);
+      // 2. Query FastAPI assistant with intent classification and multi-turn history
+      const assistantResponse = await FastAPIService.sendChatMessage(prompt, projectId, req.body.conversationHistory);
 
       // 3. Log assistant response & intent telemetry
       await SupabaseService.logChatMessage({

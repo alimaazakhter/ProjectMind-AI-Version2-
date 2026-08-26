@@ -7,7 +7,7 @@ from app.config import settings
 
 logger = logging.getLogger("gemini-service")
 
-FALLBACK_MODELS = ["gemini-2.5-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
+FALLBACK_MODELS = ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-flash-latest", "gemini-2.5-flash"]
 
 class GeminiService:
     def __init__(self):
