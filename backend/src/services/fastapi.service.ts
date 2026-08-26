@@ -21,7 +21,7 @@ export class FastAPIService {
         agentMode: payload.agentMode || 'multi',
         customRequirements: payload.customRequirements || null,
       }, {
-        timeout: 25000,
+        timeout: 60000,
         headers: { 'Content-Type': 'application/json' },
       });
 
@@ -33,7 +33,13 @@ export class FastAPIService {
         domain: data.domain || payload.domain,
         complexity: data.complexity || payload.complexity,
         agent_mode: data.agent_mode || payload.agentMode,
+        abstract: data.abstract || '',
         problem_statement: data.problem_statement || '',
+        literature_review: data.literature_review || '',
+        methodology: data.methodology || [],
+        algorithms_used: data.algorithms_used || [],
+        why_useful: data.why_useful || [],
+        real_world_applications: data.real_world_applications || [],
         objectives: data.objectives || [],
         features: data.features || [],
         tech_stack: data.tech_stack || [],
@@ -58,7 +64,82 @@ export class FastAPIService {
         domain: payload.domain,
         complexity: payload.complexity,
         agent_mode: payload.agentMode,
-        problem_statement: `In modern ${payload.domain.toLowerCase()}, conventional static approaches struggle with scalability, dynamic intent handling, and security auditing. This project proposes an autonomous architecture to streamline execution and improve reliability.`,
+        abstract: `This project proposes the development of an intelligent personal task prioritization and workflow automation system for ${title}. By leveraging machine learning models and dynamic context scoring, the system adapts to individual productivity rhythms, reducing decision fatigue and optimizing task execution sequences.`,
+        problem_statement: `In today's fast-paced environment, individuals and engineering teams struggle with managing ever-growing backlogs of tasks, leading to inefficiencies, missed deadlines, and high cognitive load. Existing tools typically offer static prioritization (e.g. Eisenhower matrix) or rely solely on user-defined labels without considering dynamic urgency, estimated effort, or individual energy rhythms. This project solves this fundamental gap by introducing dynamic, contextual AI task scheduling.`,
+        literature_review: `Current task management solutions range from simple to-do lists (Google Keep, Apple Reminders) to complex project tools (Trello, Asana, Jira). While these tools offer collaboration, their prioritization is largely manual. Contemporary research in job shop scheduling and recommender systems has explored optimization algorithms, but practical implementations lack personalization. This project bridges this gap by unifying gradient boosting regressors and clustering algorithms for personalized task sequencing.`,
+        methodology: [
+          {
+            step_number: 1,
+            title: "Data Collection & Preprocessing",
+            description: "Design a system for users to input tasks with attributes (title, description, due date, estimated effort, dependencies, category) and collect historical task completion data.",
+            details: ["Parse input attributes and clean text metadata", "Calculate urgency scores based on deadline proximity", "One-hot encode categorical task types"]
+          },
+          {
+            step_number: 2,
+            title: "Feature Engineering & Productivity Metrics",
+            description: "Extract temporal and semantic features from tasks to feed into predictive machine learning models.",
+            details: ["Compute time_until_deadline, day_of_week, and task_duration_estimate", "Generate text embeddings from task descriptions", "Derive historical productivity metrics for user peak hours"]
+          },
+          {
+            step_number: 3,
+            title: "Machine Learning Model Development",
+            description: "Train regression models to predict task completion effort and clustering algorithms to group related work.",
+            details: ["Train Gradient Boosting Regressor (XGBoost) for effort prediction", "Cluster user productivity patterns using K-Means and DBSCAN", "Rank tasks dynamically using weighted urgency-effort heuristics"]
+          },
+          {
+            step_number: 4,
+            title: "System Deployment & Performance Verification",
+            description: "Expose task prioritization endpoints through Express REST API and evaluate productivity gains.",
+            details: ["Deploy FastAPI microservice with Pydantic validation", "Track model accuracy and completion rate metrics in PostgreSQL", "Benchmark system latency under high concurrency"]
+          }
+        ],
+        algorithms_used: [
+          {
+            name: "Gradient Boosting Regressor (XGBoost / LightGBM)",
+            category: "Supervised Regression",
+            purpose: "Predicts numerical values such as the actual effort required for a task and likelihood of on-time completion.",
+            input_features: "Task features (description embeddings, estimated effort, category, time-related features, user historical average).",
+            output: "Predicted numerical completion effort and urgency score.",
+            rationale: "Outperforms standard linear models by capturing non-linear feature interactions with minimal tuning."
+          },
+          {
+            name: "Clustering Algorithms (K-Means & DBSCAN)",
+            category: "Unsupervised Clustering",
+            purpose: "Identifies distinct user productivity patterns and groups similar tasks (e.g., morning deep work vs. afternoon admin tasks).",
+            input_features: "Historical task features, completion timestamps, user performance metrics.",
+            output: "Optimal task execution clusters and focus mode recommendations.",
+            rationale: "Discovers natural temporal groupings without requiring manual user tags."
+          }
+        ],
+        why_useful: [
+          "Enhanced Productivity: By suggesting an optimal sequence, users focus on the right tasks at the right time, minimizing context switching.",
+          "Reduced Decision Fatigue: Users no longer need to spend mental energy deciding what to work on next, as the system provides intelligent recommendations.",
+          "Personalized Experience: Unlike generic task managers, this system adapts to individual work habits, preferences, and performance.",
+          "Proactive Management: Highlights potential bottlenecks or tasks that might miss their deadline, allowing users to reallocate effort proactively.",
+          "Continuous Improvement: The feedback loop ensures recommendations improve over time based on actual completion data."
+        ],
+        real_world_applications: [
+          {
+            domain: "Team Project Management",
+            application: "Adapting the system to prioritize tasks within a team, considering individual member strengths, availability, and project dependencies."
+          },
+          {
+            domain: "Educational Planning",
+            application: "Helping students prioritize study tasks, assignments, and exam preparation based on their learning style, subject difficulty, and deadlines."
+          },
+          {
+            domain: "Healthcare Scheduling",
+            application: "Optimizing patient appointments and nurse task assignments in a hospital setting, considering urgency, staff availability, and resource constraints."
+          },
+          {
+            domain: "Logistics & Supply Chain",
+            application: "Prioritizing delivery routes, warehouse tasks, or inventory management based on real-time data, demand, and resource availability."
+          },
+          {
+            domain: "Customer Support Systems",
+            application: "Prioritizing support tickets based on customer impact, urgency, and agent expertise, leading to faster resolution times."
+          }
+        ],
         objectives: [
           `Architect a high-performance decoupled pipeline utilizing ${payload.preferredTech?.[0] || 'Next.js'} and ${payload.preferredTech?.[1] || 'Python'}.`,
           'Implement modular data validation, persistent database models, and role-based access control.',

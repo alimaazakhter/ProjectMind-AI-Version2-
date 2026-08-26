@@ -5,7 +5,7 @@ from app.agents.planner_agent import PlannerAgent
 from app.agents.architect_agent import ArchitectAgent
 from app.agents.research_agent import ResearchAgent
 from app.agents.viva_agent import VivaAgent
-from app.schemas.blueprint import BlueprintGenerateRequest, BlueprintResponse
+from app.schemas.blueprint import BlueprintGenerateRequest
 from app.services.gemini_service import gemini_client
 
 logger = logging.getLogger("orchestrator")
@@ -68,7 +68,13 @@ class MultiAgentOrchestrator:
                 "domain": req.domain,
                 "complexity": req.complexity,
                 "agent_mode": req.agent_mode,
+                "abstract": planner_data.get("abstract", f"This project presents an intelligent system designed to address challenges in {req.domain} through decoupled modern software architecture."),
                 "problem_statement": planner_data.get("problem_statement", ""),
+                "literature_review": planner_data.get("literature_review", ""),
+                "methodology": architect_data.get("methodology", []),
+                "algorithms_used": architect_data.get("algorithms_used", []),
+                "why_useful": planner_data.get("why_useful", []),
+                "real_world_applications": planner_data.get("real_world_applications", []),
                 "objectives": planner_data.get("objectives", []),
                 "features": planner_data.get("features", []),
                 "architecture": architect_data.get("architecture", {
@@ -94,9 +100,9 @@ class MultiAgentOrchestrator:
     @staticmethod
     def _generate_fallback(req: BlueprintGenerateRequest) -> Dict[str, Any]:
         """
-        High-grade academic synthesizer fallback.
+        High-grade academic synthesizer fallback with rich sections.
         """
-        tech_list = req.preferred_tech if req.preferred_tech else ["Next.js", "Node.js/Express", "Python FastAPI", "PostgreSQL", "Supabase"]
+        tech_list = req.preferred_tech if req.preferred_tech else ["Next.js 14", "Node.js/Express", "Python FastAPI", "PostgreSQL", "Supabase"]
         tech_rows = [
             {
                 "category": "Frontend / Client",
@@ -126,7 +132,93 @@ class MultiAgentOrchestrator:
             "domain": req.domain,
             "complexity": req.complexity,
             "agent_mode": req.agent_mode,
-            "problem_statement": f"Current solutions in {req.domain} suffer from architectural fragmentation, high latency, and lack of automated multi-tier orchestration. This project addresses the gap by providing an end-to-end decoupled platform for {req.title_idea}.",
+            "abstract": f"This project proposes the development of an intelligent, end-to-end platform for {req.title_idea} in {req.domain}. By leveraging a decoupled microservice architecture, predictive modeling, and automated pipelines, the system eliminates traditional operational bottlenecks and enhances real-world system throughput.",
+            "problem_statement": f"In modern {req.domain.toLowerCase()}, conventional static approaches struggle with scalability, dynamic intent handling, and security auditing. Traditional methods often rely on manual oversight, leading to inefficiencies, high error rates, and increased decision fatigue. This project establishes an autonomous architecture to streamline execution and guarantee reliability.",
+            "literature_review": f"Existing solutions in {req.domain} range from basic heuristic rule sets to isolated script-based automation. While contemporary research has explored individual machine learning models, practical implementations frequently fail to integrate real-time API gateways with robust database persistence. This project bridges this critical gap by unifying modern client interfaces, high-concurrency API gateways, and specialized AI workers.",
+            "methodology": [
+                {
+                    "step_number": 1,
+                    "title": "Data Ingestion & Sanitization",
+                    "description": "Collects input parameters, applies data validation, and structures records for algorithmic consumption.",
+                    "details": [
+                        "Validate payload structures against strict Pydantic schemas",
+                        "Sanitize text inputs and filter noise",
+                        "Normalize numerical parameters and timestamp metadata"
+                    ]
+                },
+                {
+                    "step_number": 2,
+                    "title": "Feature Engineering & Context Extraction",
+                    "description": "Transforms raw attributes into high-dimensional feature vectors and contextual embeddings.",
+                    "details": [
+                        "Extract domain-specific keywords and syntactic tokens",
+                        "Compute heuristic priority weights and urgency scores",
+                        "Generate normalized embedding vectors"
+                    ]
+                },
+                {
+                    "step_number": 3,
+                    "title": "Model Training & Pipeline Execution",
+                    "description": "Executes predictive models and heuristic algorithms to optimize task ordering and decisions.",
+                    "details": [
+                        "Train regression and classification estimators",
+                        "Optimize loss functions using cross-validation",
+                        "Perform automated hyperparameter tuning"
+                    ]
+                },
+                {
+                    "step_number": 4,
+                    "title": "System Integration & Verification",
+                    "description": "Integrates models with the Express REST gateway and PostgreSQL cloud storage.",
+                    "details": [
+                        "Expose authenticated REST API endpoints",
+                        "Record lifecycle audit trails in database",
+                        "Perform end-to-end latency benchmarking"
+                    ]
+                }
+            ],
+            "algorithms_used": [
+                {
+                    "name": "Gradient Boosting Regressor (XGBoost / LightGBM)",
+                    "category": "Supervised Learning",
+                    "purpose": "Predicts numerical values such as effort estimation, priority scores, and task completion latency.",
+                    "input_features": "Task attributes (complexity, dependencies, historical duration, category).",
+                    "output": "Predicted continuous effort score and completion likelihood.",
+                    "rationale": "High accuracy on tabular data with minimal overfitting through gradient-boosted decision trees."
+                },
+                {
+                    "name": "Density-Based Spatial Clustering (DBSCAN / K-Means)",
+                    "category": "Unsupervised Clustering",
+                    "purpose": "Identifies distinct user activity patterns and groups interrelated tasks into execution clusters.",
+                    "input_features": "Interaction timestamps, category encodings, completion frequency.",
+                    "output": "Task cluster assignments and anomaly detection flags.",
+                    "rationale": "Discovers arbitrary-shaped clusters and filters out noisy outliers effectively."
+                }
+            ],
+            "why_useful": [
+                "Enhanced Productivity: Optimizes execution order, minimizing context switching and maximizing output.",
+                "Reduced Decision Fatigue: Automatically prioritizes complex workflows based on data-driven heuristics.",
+                "Personalized Adaptation: Learns from ongoing user feedback to continuously improve recommendations.",
+                "Proactive Risk Management: Identifies impending bottlenecks and suggests corrective interventions early."
+            ],
+            "real_world_applications": [
+                {
+                    "domain": "Enterprise Project Management",
+                    "application": "Automates sprint task scheduling and resource allocation across distributed engineering teams."
+                },
+                {
+                    "domain": "Educational & Academic Planning",
+                    "application": "Assists students and researchers in structuring course milestones, project deliverables, and thesis roadmaps."
+                },
+                {
+                    "domain": "Healthcare Operations",
+                    "application": "Optimizes clinical workflow triage and task prioritization for medical staff and appointment schedules."
+                },
+                {
+                    "domain": "DevOps & Cloud Infrastructure",
+                    "application": "Prioritizes automated CI/CD pipeline jobs and incident response tasks during production deployments."
+                }
+            ],
             "objectives": [
                 f"Design a decoupled 3-tier microservice architecture for {req.domain}.",
                 "Implement strict JWT session token authentication with role-based access control.",

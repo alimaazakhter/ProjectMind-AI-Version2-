@@ -95,6 +95,27 @@ export interface StarterCodeFile {
   code: string;
 }
 
+export interface AlgorithmSpec {
+  name: string;
+  category?: string;
+  purpose: string;
+  input_features?: string;
+  output?: string;
+  rationale?: string;
+}
+
+export interface MethodologyStep {
+  step_number?: number;
+  title: string;
+  description: string;
+  details?: string[];
+}
+
+export interface RealWorldApplication {
+  domain: string;
+  application: string;
+}
+
 // Unified Complete Blueprint Model (combines projects + blueprints + child tables for Client Presentation & Exports)
 export interface ProjectBlueprint {
   id: string;
@@ -105,7 +126,13 @@ export interface ProjectBlueprint {
   complexity: string;
   agent_mode: AgentMode;
   status?: ProjectStatus;
+  abstract?: string;
   problem_statement: string;
+  literature_review?: string;
+  methodology?: MethodologyStep[];
+  algorithms_used?: AlgorithmSpec[];
+  why_useful?: string[];
+  real_world_applications?: RealWorldApplication[];
   objectives: string[];
   features: ProjectFeature[];
   tech_stack: TechStackCategory[];

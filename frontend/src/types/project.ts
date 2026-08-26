@@ -53,27 +53,67 @@ export interface StarterCodeFile {
   code: string;
 }
 
+export interface AlgorithmSpec {
+  name: string;
+  category?: string;
+  purpose: string;
+  input_features?: string;
+  output?: string;
+  rationale?: string;
+}
+
+export interface MethodologyStep {
+  step_number?: number;
+  title: string;
+  description: string;
+  details?: string[];
+}
+
+export interface RealWorldApplication {
+  domain: string;
+  application: string;
+}
+
 export interface ProjectBlueprint {
   id: string;
   title: string;
   tagline: string;
   domain: string;
   complexity: string;
-  problemStatement: string;
+  agent_mode?: AgentMode;
+  abstract?: string;
+  problemStatement?: string;
+  problem_statement?: string;
+  literatureReview?: string;
+  literature_review?: string;
+  methodology?: MethodologyStep[];
+  algorithmsUsed?: AlgorithmSpec[];
+  algorithms_used?: AlgorithmSpec[];
+  whyUseful?: string[];
+  why_useful?: string[];
+  realWorldApplications?: RealWorldApplication[];
+  real_world_applications?: RealWorldApplication[];
   objectives: string[];
   features: ProjectFeature[];
-  techStack: TechStackCategory[];
+  techStack?: TechStackCategory[];
+  tech_stack?: TechStackCategory[];
   architecture: {
     summary: string;
     components: string[];
     diagramDescription: string;
   };
   datasets: DatasetItem[];
-  researchReferences: ResearchPaper[];
+  researchReferences?: ResearchPaper[];
+  research_references?: ResearchPaper[];
   roadmap: RoadmapPhase[];
-  vivaQuestions: VivaPair[];
-  starterCode: StarterCodeFile[];
-  uniquifierSuggestions: string[];
-  createdAt: string;
-  updatedAt: string;
+  vivaQuestions?: VivaPair[];
+  viva_questions?: VivaPair[];
+  starterCode?: StarterCodeFile[];
+  starter_code?: StarterCodeFile[];
+  uniquifierSuggestions?: string[];
+  uniquifier_suggestions?: string[];
+  createdAt?: string;
+  created_at?: string;
+  updatedAt?: string;
+  updated_at?: string;
 }

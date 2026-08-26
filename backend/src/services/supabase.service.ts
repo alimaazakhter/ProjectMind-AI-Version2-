@@ -263,7 +263,15 @@ export class SupabaseService {
       problem_statement: data.problem_statement,
       objectives: data.objectives,
       features: data.features,
-      architecture: data.architecture,
+      architecture: {
+        ...(data.architecture || {}),
+        abstract: data.abstract || '',
+        literature_review: data.literature_review || '',
+        methodology: data.methodology || [],
+        algorithms_used: data.algorithms_used || [],
+        why_useful: data.why_useful || [],
+        real_world_applications: data.real_world_applications || [],
+      },
       viva_questions: data.viva_questions,
       starter_code: data.starter_code,
       uniquifier_suggestions: data.uniquifier_suggestions,
@@ -747,6 +755,7 @@ export class SupabaseService {
    */
   private static assembleBlueprint(p: any): ProjectBlueprint {
     const bp = p.blueprints?.[0] || p.blueprints || {};
+    const arch = bp.architecture || {};
     const tech = (p.project_tech_stack || []).map((t: any) => ({
       category: t.category,
       item: t.technology_name,
@@ -773,10 +782,20 @@ export class SupabaseService {
       agent_mode: p.agent_mode,
       status: p.status,
       tagline: bp.tagline || '',
+      abstract: arch.abstract || bp.abstract || '',
       problem_statement: bp.problem_statement || '',
+      literature_review: arch.literature_review || bp.literature_review || '',
+      methodology: arch.methodology || bp.methodology || [],
+      algorithms_used: arch.algorithms_used || bp.algorithms_used || [],
+      why_useful: arch.why_useful || bp.why_useful || [],
+      real_world_applications: arch.real_world_applications || bp.real_world_applications || [],
       objectives: bp.objectives || [],
       features: bp.features || [],
-      architecture: bp.architecture || { summary: '', components: [], diagramDescription: '' },
+      architecture: {
+        summary: arch.summary || '',
+        components: arch.components || [],
+        diagramDescription: arch.diagramDescription || '',
+      },
       tech_stack: tech.length > 0 ? tech : bp.tech_stack || [],
       roadmap: road.length > 0 ? road : bp.roadmap || [],
       datasets: datasets.length > 0 ? datasets : bp.datasets || [],
