@@ -44,6 +44,7 @@ class AIConfigUpdateRequest(BaseModel):
 # Health / Readiness Probe
 @app.get("/health", tags=["Health"])
 @app.get("/api/v1/health", tags=["Health"])
+@app.get("/api/v1/ai/health", tags=["Health"])
 async def health_check():
     return {
         "status": "healthy",

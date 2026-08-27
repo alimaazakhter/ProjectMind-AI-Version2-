@@ -62,8 +62,11 @@ const VALID_ADMIN_PASSCODES = ['1234', 'admin123', 'admin2026', process.env.ADMI
  */
 export const requireAdmin = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
-    // 1. Passcode Header Authorization Check
-    const adminPasscode = (req.headers['x-admin-passcode'] as string)?.trim();
+    // 1. Passcode Header & Query Authorization Check
+    const headerPasscode = (req.headers['x-admin-passcode'] as string)?.trim();
+    const queryPasscode = ((req.query.passcode || req.query['x-admin-passcode']) as string)?.trim();
+    const adminPasscode = headerPasscode || queryPasscode;
+
     if (adminPasscode && VALID_ADMIN_PASSCODES.includes(adminPasscode)) {
       req.userRole = 'admin';
       req.userId = req.userId || 'admin_console';
