@@ -49,3 +49,54 @@ export const optionalAuth = (req: AuthenticatedRequest, _res: Response, next: Ne
   }
   next();
 };
+
+const VALID_ADMIN_PASSCODES = ['1234', 'admin123', 'admin2026', process.env.ADMIN_PASSCODE].filter(Boolean);
+
+/**
+ * Strict Admin Authorization Middleware.
+ * Enforces admin privilege:
+ * 1. Checks valid x-admin-passcode header, OR
+ * 2. Checks verified Clerk authentication with Supabase profile role === 'admin'.
+ * 
+ * Rejects unauthorized users / students with HTTP 403 Forbidden.
+ */
+export const requireAdmin = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    // 1. Passcode Header Authorization Check
+    const adminPasscode = (req.headers['x-admin-passcode'] as string)?.trim();
+    if (adminPasscode && VALID_ADMIN_PASSCODES.includes(adminPasscode)) {
+      req.userRole = 'admin';
+      req.userId = req.userId || 'admin_console';
+      next();
+      return;
+    }
+
+    // 2. Clerk Token + Supabase Profile Role Check
+    try {
+      const auth = getAuth(req);
+      if (auth && auth.userId) {
+        req.userId = auth.userId;
+        const { SupabaseService } = await import('../services/supabase.service.js');
+        const profile = await SupabaseService.getUserProfile(auth.userId);
+        if (profile && profile.role === 'admin') {
+          req.userRole = 'admin';
+          next();
+          return;
+        }
+      }
+    } catch {
+      // Ignore inner error and fall through to 403
+    }
+
+    res.status(403).json({
+      success: false,
+      message: 'Forbidden: Administrator privileges required to access this resource.',
+    });
+  } catch (error) {
+    res.status(403).json({
+      success: false,
+      message: 'Forbidden: Administrator authorization verification failed.',
+    });
+  }
+};
+

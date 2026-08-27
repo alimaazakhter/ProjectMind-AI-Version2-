@@ -718,35 +718,367 @@ export class SupabaseService {
   }
 
   /**
-   * Fetch aggregate admin metrics.
+   * Fetch aggregate admin overview with real counts, export distribution, and table stats.
    */
-  static async getAdminMetrics(): Promise<{
+  static async getAdminOverview(): Promise<{
     totalUsers: number;
     totalProjects: number;
+    totalBlueprints: number;
+    totalChatMessages: number;
     totalExports: number;
-    totalChatQueries: number;
+    exportBreakdown: { pdf: number; docx: number; ppt: number; md: number };
+    domainStats: { domain: string; count: number }[];
+    tableStats: Record<string, number>;
   }> {
     if (isSupabaseConfigured && supabase) {
-      const [users, projects, exports, messages] = await Promise.all([
+      const [
+        usersRes,
+        projectsRes,
+        blueprintsRes,
+        messagesRes,
+        exportsRes,
+        exportRowsRes,
+        allProjectsRes,
+        tableReqs,
+        tableTech,
+        tableRoad,
+        tableRefs,
+        tableHist,
+        tableSessions,
+      ] = await Promise.all([
         supabase.from('profiles').select('id', { count: 'exact', head: true }),
         supabase.from('projects').select('id', { count: 'exact', head: true }),
-        supabase.from('exports').select('id', { count: 'exact', head: true }),
+        supabase.from('blueprints').select('id', { count: 'exact', head: true }),
         supabase.from('chat_messages').select('id', { count: 'exact', head: true }),
+        supabase.from('exports').select('id', { count: 'exact', head: true }),
+        supabase.from('exports').select('format'),
+        supabase.from('projects').select('domain'),
+        supabase.from('project_requirements').select('id', { count: 'exact', head: true }),
+        supabase.from('project_tech_stack').select('id', { count: 'exact', head: true }),
+        supabase.from('project_roadmaps').select('id', { count: 'exact', head: true }),
+        supabase.from('project_references').select('id', { count: 'exact', head: true }),
+        supabase.from('project_history').select('id', { count: 'exact', head: true }),
+        supabase.from('chat_sessions').select('id', { count: 'exact', head: true }),
       ]);
 
+      const exportBreakdown = { pdf: 0, docx: 0, ppt: 0, md: 0 };
+      (exportRowsRes.data || []).forEach((row: any) => {
+        const fmt = (row.format || '').toLowerCase();
+        if (fmt in exportBreakdown) {
+          (exportBreakdown as any)[fmt] += 1;
+        }
+      });
+
+      const domainMap: Record<string, number> = {};
+      (allProjectsRes.data || []).forEach((p: any) => {
+        const d = p.domain || 'Uncategorized';
+        domainMap[d] = (domainMap[d] || 0) + 1;
+      });
+      const domainStats = Object.entries(domainMap)
+        .map(([domain, count]) => ({ domain, count }))
+        .sort((a, b) => b.count - a.count);
+
+      const tableStats: Record<string, number> = {
+        profiles: usersRes.count || 0,
+        projects: projectsRes.count || 0,
+        project_requirements: tableReqs.count || 0,
+        blueprints: blueprintsRes.count || 0,
+        project_tech_stack: tableTech.count || 0,
+        project_roadmaps: tableRoad.count || 0,
+        project_references: tableRefs.count || 0,
+        project_history: tableHist.count || 0,
+        chat_sessions: tableSessions.count || 0,
+        chat_messages: messagesRes.count || 0,
+        exports: exportsRes.count || 0,
+      };
+
       return {
-        totalUsers: users.count || inMemoryProfiles.size || 1248,
-        totalProjects: projects.count || inMemoryProjects.size || 4890,
-        totalExports: exports.count || inMemoryExports.length || 3120,
-        totalChatQueries: messages.count || inMemoryMessages.length || 8540,
+        totalUsers: usersRes.count || 0,
+        totalProjects: projectsRes.count || 0,
+        totalBlueprints: blueprintsRes.count || 0,
+        totalChatMessages: messagesRes.count || 0,
+        totalExports: exportsRes.count || 0,
+        exportBreakdown,
+        domainStats,
+        tableStats,
       };
     }
 
+    // In-memory fallback metrics
+    const exportBreakdown = { pdf: 0, docx: 0, ppt: 0, md: 0 };
+    inMemoryExports.forEach((e) => {
+      const fmt = (e.format || '').toLowerCase();
+      if (fmt in exportBreakdown) (exportBreakdown as any)[fmt] += 1;
+    });
+
+    const domainMap: Record<string, number> = {};
+    Array.from(inMemoryProjects.values()).forEach((p) => {
+      const d = p.domain || 'Uncategorized';
+      domainMap[d] = (domainMap[d] || 0) + 1;
+    });
+
     return {
-      totalUsers: inMemoryProfiles.size || 1248,
-      totalProjects: inMemoryProjects.size || 4890,
-      totalExports: inMemoryExports.length || 3120,
-      totalChatQueries: inMemoryMessages.length || 8540,
+      totalUsers: inMemoryProfiles.size,
+      totalProjects: inMemoryProjects.size,
+      totalBlueprints: inMemoryBlueprints.size,
+      totalChatMessages: inMemoryMessages.length,
+      totalExports: inMemoryExports.length,
+      exportBreakdown,
+      domainStats: Object.entries(domainMap).map(([domain, count]) => ({ domain, count })),
+      tableStats: {
+        profiles: inMemoryProfiles.size,
+        projects: inMemoryProjects.size,
+        project_requirements: inMemoryRequirements.size,
+        blueprints: inMemoryBlueprints.size,
+        project_tech_stack: inMemoryTechStack.size,
+        project_roadmaps: inMemoryRoadmaps.size,
+        project_references: inMemoryReferences.size,
+        project_history: inMemoryHistory.length,
+        chat_sessions: inMemorySessions.size,
+        chat_messages: inMemoryMessages.length,
+        exports: inMemoryExports.length,
+      },
+    };
+  }
+
+  /**
+   * Fetch all registered users from profiles table with project count.
+   */
+  static async getAllUsersAdmin(): Promise<any[]> {
+    if (isSupabaseConfigured && supabase) {
+      const [{ data: profiles, error: pErr }, { data: projects, error: prjErr }] = await Promise.all([
+        supabase.from('profiles').select('*').order('created_at', { ascending: false }),
+        supabase.from('projects').select('user_id'),
+      ]);
+
+      if (pErr) {
+        console.error('Error fetching users from Supabase profiles:', pErr);
+        return [];
+      }
+
+      const projectCounts: Record<string, number> = {};
+      (projects || []).forEach((p: any) => {
+        projectCounts[p.user_id] = (projectCounts[p.user_id] || 0) + 1;
+      });
+
+      return (profiles || []).map((u: any) => ({
+        id: u.id,
+        clerk_user_id: u.clerk_user_id,
+        email: u.email,
+        full_name: u.full_name || 'Anonymous User',
+        role: u.role || 'student',
+        university: u.university || 'N/A',
+        academic_level: u.academic_level || 'N/A',
+        semester: u.semester || 'N/A',
+        created_at: u.created_at,
+        project_count: projectCounts[u.clerk_user_id] || projectCounts[u.id] || 0,
+      }));
+    }
+
+    return Array.from(inMemoryProfiles.values()).map((u) => ({
+      id: u.id,
+      clerk_user_id: u.clerk_user_id,
+      email: u.email,
+      full_name: u.full_name || 'Demo Student',
+      role: u.role || 'student',
+      university: u.university || 'N/A',
+      academic_level: u.academic_level || 'N/A',
+      semester: u.semester || 'N/A',
+      created_at: u.created_at,
+      project_count: 1,
+    }));
+  }
+
+  /**
+   * Update user role in profiles (student <-> admin).
+   */
+  static async updateUserRoleAdmin(clerkUserId: string, newRole: 'student' | 'admin'): Promise<boolean> {
+    if (!['student', 'admin'].includes(newRole)) {
+      throw new Error(`Invalid role '${newRole}'. Allowed roles: student, admin.`);
+    }
+
+    const now = new Date().toISOString();
+    if (isSupabaseConfigured && supabase) {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ role: newRole, updated_at: now })
+        .eq('clerk_user_id', clerkUserId);
+
+      if (error) {
+        // Fallback check if clerkUserId matches id UUID
+        const { error: err2 } = await supabase
+          .from('profiles')
+          .update({ role: newRole, updated_at: now })
+          .eq('id', clerkUserId);
+        if (err2) throw err2;
+      }
+      return true;
+    }
+
+    const user = inMemoryProfiles.get(clerkUserId);
+    if (user) {
+      user.role = newRole;
+      user.updated_at = now;
+      inMemoryProfiles.set(clerkUserId, user);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Fetch all projects across all users globally for admin catalog & moderation.
+   */
+  static async getAllProjectsGlobalAdmin(): Promise<any[]> {
+    if (isSupabaseConfigured && supabase) {
+      const [{ data: projects, error: prjErr }, { data: profiles, error: profErr }] = await Promise.all([
+        supabase
+          .from('projects')
+          .select(`
+            id,
+            user_id,
+            title,
+            domain,
+            complexity,
+            agent_mode,
+            status,
+            created_at,
+            updated_at,
+            blueprints (
+              tagline,
+              problem_statement,
+              objectives,
+              features,
+              architecture
+            )
+          `)
+          .order('created_at', { ascending: false }),
+        supabase.from('profiles').select('clerk_user_id, email, full_name'),
+      ]);
+
+      if (prjErr) {
+        console.error('Error fetching global projects:', prjErr);
+        return [];
+      }
+
+      const authorMap: Record<string, { email: string; full_name: string }> = {};
+      (profiles || []).forEach((prof: any) => {
+        authorMap[prof.clerk_user_id] = {
+          email: prof.email,
+          full_name: prof.full_name || prof.email,
+        };
+      });
+
+      return (projects || []).map((p: any) => {
+        const bp = Array.isArray(p.blueprints) ? p.blueprints[0] : p.blueprints;
+        const author = authorMap[p.user_id] || { email: 'user@projectmind.ai', full_name: p.user_id };
+        return {
+          id: p.id,
+          user_id: p.user_id,
+          author_name: author.full_name,
+          author_email: author.email,
+          title: p.title,
+          domain: p.domain,
+          complexity: p.complexity,
+          agent_mode: p.agent_mode,
+          status: p.status,
+          tagline: bp?.tagline || '',
+          problem_statement: bp?.problem_statement || '',
+          has_blueprint: Boolean(bp && bp.problem_statement),
+          created_at: p.created_at,
+        };
+      });
+    }
+
+    return Array.from(inMemoryProjects.values()).map((p) => ({
+      id: p.id,
+      user_id: p.user_id,
+      author_name: 'Demo Student',
+      author_email: 'demo@projectmind.ai',
+      title: p.title,
+      domain: p.domain,
+      complexity: p.complexity,
+      agent_mode: p.agent_mode,
+      status: p.status,
+      tagline: 'Autonomous AI Blueprint',
+      problem_statement: 'Static analysis vulnerability detection.',
+      has_blueprint: true,
+      created_at: p.created_at || new Date().toISOString(),
+    }));
+  }
+
+  /**
+   * Delete a project globally as admin (cascades to all 10 child tables).
+   */
+  static async deleteProjectAdmin(projectId: string): Promise<boolean> {
+    if (isSupabaseConfigured && supabase) {
+      const { error } = await supabase.from('projects').delete().eq('id', projectId);
+      if (error) throw error;
+      return true;
+    }
+
+    inMemoryProjects.delete(projectId);
+    inMemoryBlueprints.delete(projectId);
+    inMemoryRequirements.delete(projectId);
+    return true;
+  }
+
+  /**
+   * Fetch recent real chat messages & intent telemetry for admin auditing.
+   */
+  static async getRecentChatLogsAdmin(limit: number = 60): Promise<any[]> {
+    if (isSupabaseConfigured && supabase) {
+      const { data, error } = await supabase
+        .from('chat_messages')
+        .select(`
+          id,
+          session_id,
+          sender,
+          content,
+          intent,
+          confidence,
+          metadata,
+          created_at
+        `)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (error) {
+        console.error('Error fetching chat messages:', error);
+        return [];
+      }
+
+      return data || [];
+    }
+
+    return inMemoryMessages.slice(-limit).reverse();
+  }
+
+  /**
+   * Generate comprehensive system audit report data (JSON).
+   */
+  static async getAuditReportData(): Promise<any> {
+    const overview = await this.getAdminOverview();
+    const users = await this.getAllUsersAdmin();
+    const projects = await this.getAllProjectsGlobalAdmin();
+    const chatLogs = await this.getRecentChatLogsAdmin(25);
+
+    return {
+      system: 'ProjectMind AI Enterprise Platform',
+      environment: 'production',
+      generated_at: new Date().toISOString(),
+      metrics: {
+        total_registered_users: overview.totalUsers,
+        total_projects_generated: overview.totalProjects,
+        total_blueprints: overview.totalBlueprints,
+        total_chat_messages: overview.totalChatMessages,
+        total_exports: overview.totalExports,
+        export_breakdown: overview.exportBreakdown,
+        database_11_tables_row_counts: overview.tableStats,
+        top_domains: overview.domainStats,
+      },
+      registered_users_sample: users.slice(0, 15),
+      projects_sample: projects.slice(0, 15),
+      recent_chat_audit_sample: chatLogs.slice(0, 15),
     };
   }
 

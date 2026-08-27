@@ -1,6 +1,9 @@
 import logging
+import time
+from typing import Optional
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from app.config import settings
 from app.schemas.blueprint import (
     BlueprintGenerateRequest,
@@ -34,6 +37,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+class AIConfigUpdateRequest(BaseModel):
+    model: Optional[str] = None
+    temperature: Optional[float] = None
+
 # Health / Readiness Probe
 @app.get("/health", tags=["Health"])
 @app.get("/api/v1/health", tags=["Health"])
@@ -43,7 +50,43 @@ async def health_check():
         "service": "ProjectMind AI FastAPI Worker",
         "version": "1.0.0",
         "gemini_configured": gemini_client.is_configured,
-        "model": settings.GEMINI_MODEL,
+        "model": gemini_client.model_name,
+        "timestamp": time.time(),
+    }
+
+# Diagnostics Ping Probe
+@app.get("/api/v1/ai/ping", tags=["Diagnostics"])
+@app.post("/api/v1/ai/ping", tags=["Diagnostics"])
+async def ping_diagnostic():
+    start_time = time.time()
+    gemini_status = "Online" if gemini_client.is_configured else "Unconfigured"
+    latency_ms = int((time.time() - start_time) * 1000)
+    return {
+        "status": "Healthy",
+        "service": "FastAPI AI Service",
+        "port": "8000",
+        "latencyMs": latency_ms,
+        "geminiStatus": gemini_status,
+        "activeModel": gemini_client.model_name,
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+
+# AI Engine Runtime Configuration (Admin)
+@app.get("/api/v1/ai/config", tags=["Admin Configuration"])
+async def get_ai_config():
+    config = gemini_client.get_config()
+    return {
+        "success": True,
+        "data": config,
+    }
+
+@app.post("/api/v1/ai/config", tags=["Admin Configuration"])
+async def update_ai_config(payload: AIConfigUpdateRequest):
+    updated = gemini_client.set_config(model_name=payload.model, temperature=payload.temperature)
+    return {
+        "success": True,
+        "message": "AI configuration updated successfully.",
+        "data": updated,
     }
 
 # Multi-Agent Blueprint Generation
@@ -83,7 +126,6 @@ async def chat_assistant(request: ChatRequest):
             )
             return result
         else:
-            # Fallback smart assistant response
             return {
                 "content": f"I can assist you with your academic project. Here are recommendations for **{request.prompt}**:\n\n1. **Decoupled Architecture**: Separate your presentation layer, API gateway, and microservice workers.\n2. **Database Normalization**: Ensure foreign key constraints and indexes are placed on relational tables.\n3. **Viva Defense**: Be prepared to explain your concurrency model, auth token validation, and caching strategy.",
                 "intent": "general_query",

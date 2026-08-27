@@ -252,4 +252,69 @@ export class FastAPIService {
       return { status: 'Offline', latencyMs: 0 };
     }
   }
+
+  /**
+   * Fetch current AI engine configuration from FastAPI worker.
+   */
+  static async getAIConfig(): Promise<{
+    active_model: string;
+    fallback_models: string[];
+    available_models: string[];
+    temperature: number;
+    is_configured: boolean;
+  }> {
+    try {
+      const res = await axios.get(`${this.baseURL}/config`, { timeout: 3000 });
+      return res.data.data;
+    } catch {
+      return {
+        active_model: 'gemini-3.5-flash-lite',
+        fallback_models: ['gemini-3.5-flash', 'gemini-flash-latest', 'gemini-2.5-flash'],
+        available_models: ['gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.5-pro'],
+        temperature: 0.4,
+        is_configured: true,
+      };
+    }
+  }
+
+  /**
+   * Update AI engine configuration on FastAPI worker.
+   */
+  static async updateAIConfig(payload: { model?: string; temperature?: number }): Promise<any> {
+    const res = await axios.post(`${this.baseURL}/config`, payload, {
+      timeout: 3000,
+      headers: { 'Content-Type': 'application/json' },
+    });
+    return res.data.data;
+  }
+
+  /**
+   * Ping FastAPI worker for diagnostics.
+   */
+  static async pingDiagnostics(): Promise<{
+    status: 'Online' | 'Offline';
+    latencyMs: number;
+    activeModel: string;
+    geminiStatus: string;
+  }> {
+    const start = Date.now();
+    try {
+      const res = await axios.get(`${this.baseURL}/ping`, { timeout: 3000 });
+      const data = res.data;
+      return {
+        status: 'Online',
+        latencyMs: data.latencyMs || (Date.now() - start),
+        activeModel: data.activeModel || 'gemini-3.5-flash-lite',
+        geminiStatus: data.geminiStatus || 'Online',
+      };
+    } catch {
+      return {
+        status: 'Offline',
+        latencyMs: 0,
+        activeModel: 'N/A',
+        geminiStatus: 'Offline',
+      };
+    }
+  }
 }
+

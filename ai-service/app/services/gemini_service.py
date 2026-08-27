@@ -8,11 +8,14 @@ from app.config import settings
 logger = logging.getLogger("gemini-service")
 
 FALLBACK_MODELS = ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-flash-latest", "gemini-2.5-flash"]
+AVAILABLE_MODELS = ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.5-pro"]
 
 class GeminiService:
     def __init__(self):
         self.api_key = settings.GEMINI_API_KEY
         self.model_name = settings.GEMINI_MODEL
+        self.temperature = 0.4
+        self.available_models = AVAILABLE_MODELS
         self.is_configured = bool(self.api_key and not self.api_key.startswith("your-"))
 
         if self.is_configured:
@@ -24,6 +27,27 @@ class GeminiService:
                 self.is_configured = False
         else:
             logger.warning("Gemini API key is not configured or using placeholder. Running in fallback mode.")
+
+    def get_config(self) -> Dict[str, Any]:
+        return {
+            "active_model": self.model_name,
+            "fallback_models": FALLBACK_MODELS,
+            "available_models": self.available_models,
+            "temperature": self.temperature,
+            "is_configured": self.is_configured,
+        }
+
+    def set_config(self, model_name: Optional[str] = None, temperature: Optional[float] = None) -> Dict[str, Any]:
+        if model_name:
+            if model_name in self.available_models:
+                self.model_name = model_name
+                logger.info(f"Active Gemini model switched to: {self.model_name}")
+            else:
+                logger.warning(f"Requested model '{model_name}' not in supported list. Keeping '{self.model_name}'.")
+        if temperature is not None:
+            self.temperature = max(0.0, min(1.0, float(temperature)))
+            logger.info(f"Generation temperature set to: {self.temperature}")
+        return self.get_config()
 
     async def generate_json(self, prompt: str, system_instruction: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -42,7 +66,7 @@ class GeminiService:
                     system_instruction=system_instruction,
                     generation_config={
                         "response_mime_type": "application/json",
-                        "temperature": 0.4,
+                        "temperature": self.temperature,
                         "top_p": 0.95,
                     },
                 )
@@ -85,7 +109,7 @@ class GeminiService:
                     model_name=model_candidate,
                     system_instruction=system_instruction,
                     generation_config={
-                        "temperature": 0.7,
+                        "temperature": min(1.0, self.temperature + 0.3),
                         "top_p": 0.95,
                         "max_output_tokens": 1024,
                     },
