@@ -9,7 +9,7 @@ export class AIController {
    */
   static async generateBlueprint(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const userId = req.userId || 'user_demo';
+      const userId = req.userId || (req.headers['x-user-id'] as string) || (req.body.userId as string) || 'user_demo';
       
       // 1. Forward request to Python FastAPI microservice (or fallback synthesis)
       const rawBlueprint = await FastAPIService.generateBlueprint(req.body, userId);
@@ -32,7 +32,7 @@ export class AIController {
    */
   static async chat(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const userId = req.userId || 'user_demo';
+      const userId = req.userId || (req.headers['x-user-id'] as string) || (req.body.userId as string) || 'user_demo';
       const { prompt, projectId } = req.body;
 
       // 1. Log incoming user query
@@ -59,7 +59,7 @@ export class AIController {
       res.status(200).json({
         success: true,
         data: assistantResponse,
-        message: 'Chat message processed successfully.',
+        message: 'Assistant response generated successfully.',
       });
     } catch (error) {
       next(error);

@@ -110,36 +110,41 @@ export class SupabaseService {
    * Fetch all projects belonging to the authenticated user.
    */
   static async getProjectsByUser(userId: string): Promise<ProjectBlueprint[]> {
+    if (!userId) return [];
+
     if (isSupabaseConfigured && supabase) {
-      const { data: projects, error } = await supabase
-        .from('projects')
-        .select(`
-          id,
-          user_id,
-          title,
-          domain,
-          complexity,
-          agent_mode,
-          status,
-          created_at,
-          updated_at,
-          blueprints (*),
-          project_tech_stack (*),
-          project_roadmaps (*),
-          project_references (*)
-        `)
-        .or(`user_id.eq.${userId},user_id.eq.user_demo`)
-        .order('created_at', { ascending: false });
+      try {
+        const { data: projects, error } = await supabase
+          .from('projects')
+          .select(`
+            id,
+            user_id,
+            title,
+            domain,
+            complexity,
+            agent_mode,
+            status,
+            created_at,
+            updated_at,
+            blueprints (*),
+            project_tech_stack (*),
+            project_roadmaps (*),
+            project_references (*)
+          `)
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false });
 
-      if (error) throw new Error(`Supabase query failed: ${error.message}`);
-      if (!projects) return [];
-
-      return projects.map((p: any) => this.assembleBlueprint(p));
+        if (!error && projects) {
+          return projects.map((p: any) => this.assembleBlueprint(p));
+        }
+      } catch (err: any) {
+        console.warn('Supabase getProjectsByUser query warning (falling back to memory):', err.message);
+      }
     }
 
     // In-memory fallback
     const matchedProjects = Array.from(inMemoryProjects.values()).filter(
-      (p) => p.user_id === userId || p.user_id === 'user_demo'
+      (p) => p.user_id === userId
     );
 
     return matchedProjects.map((p) => {
@@ -170,42 +175,46 @@ export class SupabaseService {
   /**
    * Fetch a single project blueprint with strict ownership validation.
    */
-  static async getProjectById(id: string, userId: string): Promise<ProjectBlueprint | null> {
+  static async getProjectById(id: string, userId: string, isAdmin: boolean = false): Promise<ProjectBlueprint | null> {
     if (isSupabaseConfigured && supabase) {
-      const { data: project, error } = await supabase
-        .from('projects')
-        .select(`
-          id,
-          user_id,
-          title,
-          domain,
-          complexity,
-          agent_mode,
-          status,
-          created_at,
-          updated_at,
-          blueprints (*),
-          project_tech_stack (*),
-          project_roadmaps (*),
-          project_references (*)
-        `)
-        .eq('id', id)
-        .single();
+      try {
+        const { data: project, error } = await supabase
+          .from('projects')
+          .select(`
+            id,
+            user_id,
+            title,
+            domain,
+            complexity,
+            agent_mode,
+            status,
+            created_at,
+            updated_at,
+            blueprints (*),
+            project_tech_stack (*),
+            project_roadmaps (*),
+            project_references (*)
+          `)
+          .eq('id', id)
+          .single();
 
-      if (error || !project) return null;
-
-      if (project.user_id !== userId && project.user_id !== 'user_demo') {
-        throw new Error('Forbidden: You do not have permission to access this project.');
+        if (!error && project) {
+          if (!isAdmin && project.user_id !== userId) {
+            throw new Error('Forbidden: You do not have permission to access this project.');
+          }
+          return this.assembleBlueprint(project);
+        }
+      } catch (err: any) {
+        if (err.message?.includes('Forbidden')) throw err;
+        console.warn('Supabase getProjectById query warning (falling back to memory):', err.message);
       }
-
-      return this.assembleBlueprint(project);
     }
 
     // In-memory fallback
     const p = inMemoryProjects.get(id);
     if (!p) return null;
 
-    if (p.user_id !== userId && p.user_id !== 'user_demo') {
+    if (!isAdmin && p.user_id !== userId) {
       throw new Error('Forbidden: You do not have permission to access this project.');
     }
 
@@ -279,115 +288,117 @@ export class SupabaseService {
       updated_at: now,
     };
 
-    if (isSupabaseConfigured && supabase) {
-      // 1. Insert projects
-      const { error: pErr } = await supabase.from('projects').insert([projectEntity]);
-      if (pErr) throw new Error(`Supabase projects insert failed: ${pErr.message}`);
+    // Always persist to in-memory store for instant zero-downtime availability
+    inMemoryProjects.set(projectId, projectEntity);
+    inMemoryBlueprints.set(projectId, blueprintEntity);
+    inMemoryTechStack.set(projectId, data.tech_stack || []);
+    inMemoryRoadmaps.set(projectId, data.roadmap || []);
+    inMemoryReferences.set(projectId, [
+      ...(data.datasets || []).map((d) => ({ ...d, type: 'dataset' })),
+      ...(data.research_references || []).map((r) => ({ ...r, type: 'research_paper' })),
+    ]);
+    inMemoryHistory.push({
+      id: `hist-${Date.now()}`,
+      project_id: projectId,
+      user_id: userId,
+      action: 'PROJECT_CREATED',
+      version_tag: 'v1.0',
+      changes_summary: `Initial blueprint generated with ${data.agent_mode.toUpperCase()}-agent mode.`,
+      created_at: now,
+    });
 
-      // 2. Insert project_requirements
-      if (requirements) {
-        await supabase.from('project_requirements').insert([{
+    if (isSupabaseConfigured && supabase) {
+      try {
+        // 1. Insert projects
+        await supabase.from('projects').insert([projectEntity]);
+
+        // 2. Insert project_requirements
+        if (requirements) {
+          await supabase.from('project_requirements').insert([{
+            id: randomUUID(),
+            project_id: projectId,
+            raw_input: requirements.raw_input || data.title,
+            skill_level: requirements.skillLevel || 'intermediate',
+            preferred_tech: requirements.preferredTech || [],
+            complexity_level: data.complexity,
+            agent_mode: data.agent_mode,
+            custom_requirements: requirements.customRequirements || null,
+            created_at: now,
+          }]);
+        }
+
+        // 3. Insert blueprints
+        await supabase.from('blueprints').insert([blueprintEntity]);
+
+        // 4. Insert project_tech_stack
+        if (data.tech_stack?.length > 0) {
+          const techRows = data.tech_stack.map((t) => ({
+            id: randomUUID(),
+            project_id: projectId,
+            category: t.category,
+            technology_name: t.item,
+            justification: t.rationale,
+            created_at: now,
+          }));
+          await supabase.from('project_tech_stack').insert(techRows);
+        }
+
+        // 5. Insert project_roadmaps
+        if (data.roadmap?.length > 0) {
+          const roadmapRows = data.roadmap.map((r, i) => ({
+            id: randomUUID(),
+            project_id: projectId,
+            phase_number: i + 1,
+            phase_title: r.phase,
+            duration: r.duration,
+            tasks: r.tasks,
+            created_at: now,
+          }));
+          await supabase.from('project_roadmaps').insert(roadmapRows);
+        }
+
+        // 6. Insert project_references
+        const referenceRows: any[] = [];
+        data.datasets?.forEach((d) => {
+          referenceRows.push({
+            id: randomUUID(),
+            project_id: projectId,
+            type: 'dataset',
+            title: d.name,
+            source_url: d.source,
+            description: d.description,
+            created_at: now,
+          });
+        });
+        data.research_references?.forEach((r) => {
+          referenceRows.push({
+            id: randomUUID(),
+            project_id: projectId,
+            type: 'research_paper',
+            title: r.title,
+            authors: r.authors,
+            year: r.year,
+            source_url: r.link,
+            created_at: now,
+          });
+        });
+        if (referenceRows.length > 0) {
+          await supabase.from('project_references').insert(referenceRows);
+        }
+
+        // 7. Insert project_history
+        await supabase.from('project_history').insert([{
           id: randomUUID(),
           project_id: projectId,
-          raw_input: requirements.raw_input || data.title,
-          skill_level: requirements.skillLevel || 'intermediate',
-          preferred_tech: requirements.preferredTech || [],
-          complexity_level: data.complexity,
-          agent_mode: data.agent_mode,
-          custom_requirements: requirements.customRequirements || null,
+          user_id: userId,
+          action: 'PROJECT_CREATED',
+          version_tag: 'v1.0',
+          changes_summary: `Initial blueprint generated with ${data.agent_mode.toUpperCase()}-agent mode.`,
           created_at: now,
         }]);
+      } catch (err: any) {
+        console.warn('Supabase createProject warning (persisted to in-memory store):', err.message);
       }
-
-      // 3. Insert blueprints
-      const { error: bErr } = await supabase.from('blueprints').insert([blueprintEntity]);
-      if (bErr) throw new Error(`Supabase blueprints insert failed: ${bErr.message}`);
-
-      // 4. Insert project_tech_stack
-      if (data.tech_stack?.length > 0) {
-        const techRows = data.tech_stack.map((t) => ({
-          id: randomUUID(),
-          project_id: projectId,
-          category: t.category,
-          technology_name: t.item,
-          justification: t.rationale,
-          created_at: now,
-        }));
-        await supabase.from('project_tech_stack').insert(techRows);
-      }
-
-      // 5. Insert project_roadmaps
-      if (data.roadmap?.length > 0) {
-        const roadmapRows = data.roadmap.map((r, i) => ({
-          id: randomUUID(),
-          project_id: projectId,
-          phase_number: i + 1,
-          phase_title: r.phase,
-          duration: r.duration,
-          tasks: r.tasks,
-          created_at: now,
-        }));
-        await supabase.from('project_roadmaps').insert(roadmapRows);
-      }
-
-      // 6. Insert project_references
-      const referenceRows: any[] = [];
-      data.datasets?.forEach((d) => {
-        referenceRows.push({
-          id: randomUUID(),
-          project_id: projectId,
-          type: 'dataset',
-          title: d.name,
-          source_url: d.source,
-          description: d.description,
-          created_at: now,
-        });
-      });
-      data.research_references?.forEach((r) => {
-        referenceRows.push({
-          id: randomUUID(),
-          project_id: projectId,
-          type: 'research_paper',
-          title: r.title,
-          authors: r.authors,
-          year: r.year,
-          source_url: r.link,
-          created_at: now,
-        });
-      });
-      if (referenceRows.length > 0) {
-        await supabase.from('project_references').insert(referenceRows);
-      }
-
-      // 7. Insert project_history
-      await supabase.from('project_history').insert([{
-        id: randomUUID(),
-        project_id: projectId,
-        user_id: userId,
-        action: 'PROJECT_CREATED',
-        version_tag: 'v1.0',
-        changes_summary: `Initial blueprint generated with ${data.agent_mode.toUpperCase()}-agent mode.`,
-        created_at: now,
-      }]);
-    } else {
-      // In-memory fallback
-      inMemoryProjects.set(projectId, projectEntity);
-      inMemoryBlueprints.set(projectId, blueprintEntity);
-      inMemoryTechStack.set(projectId, data.tech_stack || []);
-      inMemoryRoadmaps.set(projectId, data.roadmap || []);
-      inMemoryReferences.set(projectId, [
-        ...(data.datasets || []).map((d) => ({ ...d, type: 'dataset' })),
-        ...(data.research_references || []).map((r) => ({ ...r, type: 'research_paper' })),
-      ]);
-      inMemoryHistory.push({
-        id: `hist-${Date.now()}`,
-        project_id: projectId,
-        user_id: userId,
-        action: 'PROJECT_CREATED',
-        version_tag: 'v1.0',
-        changes_summary: 'Initial project created.',
-        created_at: now,
-      });
     }
 
     return {
@@ -643,38 +654,46 @@ export class SupabaseService {
       updated_at: now,
     };
 
-    if (isSupabaseConfigured && supabase) {
-      const { data: existing } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('clerk_user_id', user.clerk_user_id)
-        .single();
+    inMemoryProfiles.set(user.clerk_user_id, profileData);
 
-      if (existing) {
-        const { data: updated } = await supabase
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data: existing } = await supabase
           .from('profiles')
-          .update({
-            email: user.email,
-            full_name: user.full_name || existing.full_name,
-            updated_at: now,
-          })
+          .select('*')
           .eq('clerk_user_id', user.clerk_user_id)
+          .single();
+
+        if (existing) {
+          const { data: updated } = await supabase
+            .from('profiles')
+            .update({
+              email: user.email,
+              full_name: user.full_name || existing.full_name,
+              updated_at: now,
+            })
+            .eq('clerk_user_id', user.clerk_user_id)
+            .select()
+            .single();
+          if (updated) inMemoryProfiles.set(user.clerk_user_id, updated);
+          return updated || existing;
+        }
+
+        const { data: inserted, error } = await supabase
+          .from('profiles')
+          .insert([profileData])
           .select()
           .single();
-        return updated || existing;
+
+        if (!error && inserted) {
+          inMemoryProfiles.set(user.clerk_user_id, inserted);
+          return inserted;
+        }
+      } catch (err: any) {
+        console.warn('Supabase profile sync warning (falling back to memory):', err.message);
       }
-
-      const { data: inserted, error } = await supabase
-        .from('profiles')
-        .insert([profileData])
-        .select()
-        .single();
-
-      if (error) throw new Error(`Supabase profile sync failed: ${error.message}`);
-      return inserted || profileData;
     }
 
-    inMemoryProfiles.set(user.clerk_user_id, profileData);
     return profileData;
   }
 
@@ -930,80 +949,90 @@ export class SupabaseService {
    */
   static async getAllProjectsGlobalAdmin(): Promise<any[]> {
     if (isSupabaseConfigured && supabase) {
-      const [{ data: projects, error: prjErr }, { data: profiles, error: profErr }] = await Promise.all([
-        supabase
-          .from('projects')
-          .select(`
-            id,
-            user_id,
-            title,
-            domain,
-            complexity,
-            agent_mode,
-            status,
-            created_at,
-            updated_at,
-            blueprints (
-              tagline,
-              problem_statement,
-              objectives,
-              features,
-              architecture
-            )
-          `)
-          .order('created_at', { ascending: false }),
-        supabase.from('profiles').select('clerk_user_id, email, full_name'),
-      ]);
+      try {
+        const [{ data: projects, error: prjErr }, { data: profiles }] = await Promise.all([
+          supabase
+            .from('projects')
+            .select(`
+              id,
+              user_id,
+              title,
+              domain,
+              complexity,
+              agent_mode,
+              status,
+              created_at,
+              updated_at,
+              blueprints (
+                tagline,
+                problem_statement,
+                objectives,
+                features,
+                architecture
+              )
+            `)
+            .order('created_at', { ascending: false }),
+          supabase.from('profiles').select('id, clerk_user_id, email, full_name'),
+        ]);
 
-      if (prjErr) {
-        console.error('Error fetching global projects:', prjErr);
-        return [];
+        if (!prjErr && projects) {
+          const authorMap: Record<string, { email: string; full_name: string }> = {};
+          (profiles || []).forEach((prof: any) => {
+            const entry = {
+              email: prof.email || 'student@projectmind.ai',
+              full_name: prof.full_name || prof.email?.split('@')[0] || 'Student',
+            };
+            if (prof.clerk_user_id) authorMap[prof.clerk_user_id] = entry;
+            if (prof.id) authorMap[prof.id] = entry;
+          });
+
+          return (projects || []).map((p: any) => {
+            const bp = Array.isArray(p.blueprints) ? p.blueprints[0] : p.blueprints;
+            const author = authorMap[p.user_id] || (p.user_id === 'user_demo'
+              ? { email: 'demo@projectmind.ai', full_name: 'Demo Project Account' }
+              : { email: 'unlinked@projectmind.ai', full_name: 'Unlinked Student' });
+
+            return {
+              id: p.id,
+              user_id: p.user_id,
+              author_name: author.full_name,
+              author_email: author.email,
+              title: p.title,
+              domain: p.domain,
+              complexity: p.complexity,
+              agent_mode: p.agent_mode,
+              status: p.status,
+              tagline: bp?.tagline || '',
+              problem_statement: bp?.problem_statement || '',
+              has_blueprint: Boolean(bp && bp.problem_statement),
+              created_at: p.created_at,
+            };
+          });
+        }
+      } catch (err: any) {
+        console.warn('Supabase getAllProjectsGlobalAdmin warning (falling back to memory):', err.message);
       }
-
-      const authorMap: Record<string, { email: string; full_name: string }> = {};
-      (profiles || []).forEach((prof: any) => {
-        authorMap[prof.clerk_user_id] = {
-          email: prof.email,
-          full_name: prof.full_name || prof.email,
-        };
-      });
-
-      return (projects || []).map((p: any) => {
-        const bp = Array.isArray(p.blueprints) ? p.blueprints[0] : p.blueprints;
-        const author = authorMap[p.user_id] || { email: 'user@projectmind.ai', full_name: p.user_id };
-        return {
-          id: p.id,
-          user_id: p.user_id,
-          author_name: author.full_name,
-          author_email: author.email,
-          title: p.title,
-          domain: p.domain,
-          complexity: p.complexity,
-          agent_mode: p.agent_mode,
-          status: p.status,
-          tagline: bp?.tagline || '',
-          problem_statement: bp?.problem_statement || '',
-          has_blueprint: Boolean(bp && bp.problem_statement),
-          created_at: p.created_at,
-        };
-      });
     }
 
-    return Array.from(inMemoryProjects.values()).map((p) => ({
-      id: p.id,
-      user_id: p.user_id,
-      author_name: 'Demo Student',
-      author_email: 'demo@projectmind.ai',
-      title: p.title,
-      domain: p.domain,
-      complexity: p.complexity,
-      agent_mode: p.agent_mode,
-      status: p.status,
-      tagline: 'Autonomous AI Blueprint',
-      problem_statement: 'Static analysis vulnerability detection.',
-      has_blueprint: true,
-      created_at: p.created_at || new Date().toISOString(),
-    }));
+    return Array.from(inMemoryProjects.values()).map((p) => {
+      const user = inMemoryProfiles.get(p.user_id);
+      const bp = inMemoryBlueprints.get(p.id) || {};
+      return {
+        id: p.id,
+        user_id: p.user_id,
+        author_name: user?.full_name || (p.user_id === 'user_demo' ? 'Alimaaz Akhter' : 'Student'),
+        author_email: user?.email || (p.user_id === 'user_demo' ? 'demo@projectmind.ai' : 'student@projectmind.ai'),
+        title: p.title,
+        domain: p.domain,
+        complexity: p.complexity,
+        agent_mode: p.agent_mode,
+        status: p.status,
+        tagline: bp?.tagline || 'Autonomous AI Blueprint',
+        problem_statement: bp?.problem_statement || 'Static analysis vulnerability detection.',
+        has_blueprint: Boolean(bp && (bp.problem_statement || bp.title)),
+        created_at: p.created_at || new Date().toISOString(),
+      };
+    });
   }
 
   /**

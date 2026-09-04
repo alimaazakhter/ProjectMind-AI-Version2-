@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useUser, useAuth } from '@clerk/nextjs';
 import {
   Sparkles,
   CheckCircle2,
@@ -33,6 +34,8 @@ interface DomainConfig {
 
 export default function GeneratorPage() {
   const router = useRouter();
+  const { user } = useUser();
+  const { getToken } = useAuth();
   const [step, setStep] = useState(1);
 
   // Form State
@@ -239,15 +242,21 @@ export default function GeneratorPage() {
     }, 4500);
 
     try {
+      const token = await getToken();
+      const effectiveTitle = titleIdea.trim() || currentDomainConfig.suggestions[0]?.title || `${domain} Intelligent System Architecture`;
+      const effectiveTech = preferredTech.length > 0 ? preferredTech : currentDomainConfig.suggestions[0]?.tech || ['Next.js 14', 'Node.js/Express', 'Python FastAPI', 'PostgreSQL'];
+      const effectiveConstraints = customRequirements.trim() || currentDomainConfig.suggestions[0]?.constraints || '';
+
       const blueprint = await AIService.generateBlueprint({
-        titleIdea,
+        titleIdea: effectiveTitle,
         domain,
         skillLevel,
-        preferredTech,
+        preferredTech: effectiveTech,
         complexity,
         agentMode,
-        customRequirements: `${customRequirements} | Included Sections: ${Object.keys(selectedSections).filter((k) => selectedSections[k]).join(', ')}`,
-      });
+        customRequirements: `${effectiveConstraints} | Included Sections: ${Object.keys(selectedSections).filter((k) => selectedSections[k]).join(', ')}`,
+        userId: user?.id,
+      }, token);
 
       setPipelineProgress(100);
       setStatusMessage('🎉 Complete! Opening your project workspace...');

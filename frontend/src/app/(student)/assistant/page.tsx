@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
+import { useUser, useAuth } from '@clerk/nextjs';
 import {
   Bot,
   Send,
@@ -38,6 +39,8 @@ const INITIAL_MESSAGES: ChatMessage[] = [
 ];
 
 export default function AssistantPage() {
+  const { user } = useUser();
+  const { getToken } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -72,10 +75,13 @@ export default function AssistantPage() {
     }));
 
     try {
+      const token = await getToken();
       const assistantMsg = await AIService.sendMessageToAssistant(
         prompt,
         undefined,
-        historyPayload
+        historyPayload,
+        token,
+        user?.id
       );
       setMessages((prev) => [...prev, assistantMsg]);
       if (assistantMsg.suggestedActions && assistantMsg.suggestedActions.length > 0) {

@@ -1,29 +1,43 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import { useUser, useAuth } from '@clerk/nextjs';
 import { History, Search, ArrowRight, Clock, Sparkles, FolderGit2 } from 'lucide-react';
 import { ProjectBlueprint } from '@/types/project';
 import { ProjectService } from '@/services/api/projectService';
 
 export default function HistoryPage() {
+  const { user, isLoaded } = useUser();
+  const { getToken } = useAuth();
   const [projects, setProjects] = useState<ProjectBlueprint[]>([]);
   const [search, setSearch] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    async function loadData() {
-      try {
-        const data = await ProjectService.getAllProjects();
-        setProjects(data);
-      } catch (err) {
-        console.error('Failed to load project history:', err);
-      } finally {
-        setIsLoading(false);
-      }
+  const loadUserData = useCallback(async () => {
+    if (!isLoaded) return;
+    if (!user) {
+      setProjects([]);
+      setIsLoading(false);
+      return;
     }
-    loadData();
-  }, []);
+
+    setIsLoading(true);
+    try {
+      const token = await getToken();
+      const data = await ProjectService.getAllProjects(token, user.id);
+      setProjects(data);
+    } catch (err) {
+      console.error('Failed to load project history:', err);
+      setProjects([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isLoaded, user, getToken]);
+
+  useEffect(() => {
+    loadUserData();
+  }, [loadUserData]);
 
   const filtered = projects.filter((p) => {
     const title = p.title || '';
@@ -98,31 +112,32 @@ export default function HistoryPage() {
             return (
               <div
                 key={proj.id}
-                className="p-6 rounded-2xl bg-white border border-[#EBE6DF] shadow-xs hover:border-[#7A263A]/40 hover:shadow-sm transition-all space-y-4 flex flex-col justify-between"
+                className="p-6 rounded-2xl bg-white border border-[#EBE6DF] shadow-xs hover:border-[#7A263A]/40 hover:shadow-sm transition-all flex flex-col justify-between"
               >
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-[#7A263A]/10 text-[#7A263A] border border-[#7A263A]/20">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full bg-[#7A263A]/10 text-[#7A263A] border border-[#7A263A]/20">
                       {proj.domain}
                     </span>
-                    <span className="text-xs font-semibold text-[#777777]">{proj.complexity}</span>
+                    <span className="text-[11px] font-medium text-[#777777]">{proj.complexity}</span>
                   </div>
 
                   <h3 className="text-base font-bold text-[#202020] leading-snug">{proj.title}</h3>
-                  <p className="text-xs text-[#555555] leading-relaxed line-clamp-3">{desc}</p>
+                  <p className="text-xs text-[#555555] line-clamp-2 leading-relaxed">{desc}</p>
                 </div>
 
-                <div className="pt-4 border-t border-[#EAE6DF] flex items-center justify-between">
-                  <span className="text-xs text-[#777777] flex items-center gap-1.5 font-mono">
-                    <Clock className="w-3.5 h-3.5 text-[#7A263A]" />
-                    {formattedDate}
-                  </span>
+                <div className="pt-4 mt-4 border-t border-[#EBE6DF] flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-1.5 text-[#777777] text-[11px]">
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>{formattedDate}</span>
+                  </div>
+
                   <Link
                     href={`/workspace/${proj.id}`}
-                    className="inline-flex items-center gap-1.5 text-xs font-bold text-[#7A263A] hover:text-[#661F30] group"
+                    className="inline-flex items-center gap-1.5 font-bold text-[#7A263A] hover:text-[#661F30] transition-colors"
                   >
-                    <span>Reopen Workspace</span>
-                    <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                    <span>Open Workspace</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
                   </Link>
                 </div>
               </div>

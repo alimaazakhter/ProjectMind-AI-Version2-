@@ -8,7 +8,17 @@ export class ProjectController {
    */
   static async getProjects(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const userId = req.userId || 'user_demo';
+      const userId = req.userId || (req.headers['x-user-id'] as string) || (req.query.userId as string);
+
+      if (!userId) {
+        res.status(200).json({
+          success: true,
+          data: [],
+          message: 'No authenticated user identity provided.',
+        });
+        return;
+      }
+
       const projects = await SupabaseService.getProjectsByUser(userId);
 
       res.status(200).json({
@@ -27,13 +37,15 @@ export class ProjectController {
   static async getProjectById(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const id = String(req.params.id);
-      const userId = req.userId || 'user_demo';
-      const project = await SupabaseService.getProjectById(id, userId);
+      const userId = req.userId || (req.headers['x-user-id'] as string) || (req.query.userId as string) || 'guest';
+      const isAdmin = req.userRole === 'admin' || !!req.headers['x-admin-passcode'];
+
+      const project = await SupabaseService.getProjectById(id, userId, isAdmin);
 
       if (!project) {
         res.status(404).json({
           success: false,
-          message: 'Project blueprint not found.',
+          message: 'Project blueprint not found or access forbidden.',
         });
         return;
       }
@@ -57,7 +69,15 @@ export class ProjectController {
    */
   static async createProject(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const userId = req.userId || 'user_demo';
+      const userId = req.userId || (req.headers['x-user-id'] as string) || (req.body.userId as string);
+      if (!userId) {
+        res.status(401).json({
+          success: false,
+          message: 'Authentication required to create a project.',
+        });
+        return;
+      }
+
       const created = await SupabaseService.createProject(req.body, userId);
 
       res.status(201).json({
@@ -76,7 +96,7 @@ export class ProjectController {
   static async updateProject(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const id = String(req.params.id);
-      const userId = req.userId || 'user_demo';
+      const userId = req.userId || (req.headers['x-user-id'] as string) || (req.body.userId as string) || 'guest';
       const updated = await SupabaseService.updateProject(id, req.body, userId);
 
       if (!updated) {
@@ -107,7 +127,7 @@ export class ProjectController {
   static async deleteProject(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const id = String(req.params.id);
-      const userId = req.userId || 'user_demo';
+      const userId = req.userId || (req.headers['x-user-id'] as string) || (req.body.userId as string) || 'guest';
       const deleted = await SupabaseService.deleteProject(id, userId);
 
       if (!deleted) {

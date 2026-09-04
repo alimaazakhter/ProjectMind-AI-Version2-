@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useUser, useAuth } from '@clerk/nextjs';
 import {
   FileText,
   Cpu,
@@ -21,6 +22,7 @@ import {
   Globe,
   Terminal,
   ChevronRight,
+  ShieldAlert,
 } from 'lucide-react';
 import { ProjectBlueprint } from '@/types/project';
 import { ProjectService } from '@/services/api/projectService';
@@ -28,9 +30,13 @@ import { ProjectService } from '@/services/api/projectService';
 export default function WorkspacePage() {
   const params = useParams();
   const router = useRouter();
-  const id = (params?.id as string) || 'proj-001';
+  const { user, isLoaded } = useUser();
+  const { getToken } = useAuth();
+  const id = (params?.id as string) || '';
 
   const [project, setProject] = useState<ProjectBlueprint | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [copiedSection, setCopiedSection] = useState<string | null>(null);
   const [copiedCodeIdx, setCopiedCodeIdx] = useState<number | null>(null);
@@ -38,17 +44,60 @@ export default function WorkspacePage() {
 
   useEffect(() => {
     async function loadProject() {
-      const data = await ProjectService.getProjectById(id);
-      setProject(data);
+      if (!isLoaded) return;
+      if (!id) {
+        setError('No project ID specified.');
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+      try {
+        const token = await getToken();
+        const data = await ProjectService.getProjectById(id, token, user?.id);
+        if (!data) {
+          setError('Project not found or you do not have permission to view this workspace.');
+        } else {
+          setProject(data);
+        }
+      } catch (err: any) {
+        setError(err.message || 'Failed to load project workspace.');
+      } finally {
+        setLoading(false);
+      }
     }
     loadProject();
-  }, [id]);
+  }, [id, isLoaded, user, getToken]);
 
-  if (!project) {
+  if (loading) {
     return (
       <div className="p-16 text-center text-[#888888] font-sans flex flex-col items-center justify-center min-h-[50vh] space-y-3">
         <div className="w-8 h-8 rounded-full border-2 border-[#7A263A] border-t-transparent animate-spin" />
         <span className="text-xs font-semibold text-[#666666]">Loading Project Workspace...</span>
+      </div>
+    );
+  }
+
+  if (error || !project) {
+    return (
+      <div className="p-10 max-w-lg mx-auto text-center font-sans space-y-4 my-16 bg-white rounded-2xl border border-[#EBE6DF] shadow-xs">
+        <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 flex items-center justify-center mx-auto">
+          <ShieldAlert className="w-6 h-6" />
+        </div>
+        <div>
+          <h2 className="text-base font-bold text-[#202020]">Access Restricted</h2>
+          <p className="text-xs text-[#666666] mt-1 leading-relaxed">
+            {error || 'This project does not exist or belongs to another user account.'}
+          </p>
+        </div>
+        <button
+          onClick={() => router.push('/dashboard')}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-[#7A263A] hover:bg-[#661F30] text-white text-xs font-semibold rounded-xl transition-all shadow-xs"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          <span>Back to Your Dashboard</span>
+        </button>
       </div>
     );
   }
@@ -68,7 +117,8 @@ export default function WorkspacePage() {
   const handleExport = async (format: 'pdf' | 'docx' | 'ppt' | 'md') => {
     setExportingFormat(format);
     try {
-      const blob = await ProjectService.exportProject(project.id, format);
+      const token = await getToken();
+      const blob = await ProjectService.exportProject(project.id, format, token, user?.id);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;

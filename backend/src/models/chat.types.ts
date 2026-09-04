@@ -1,5 +1,5 @@
 export interface IntentClassification {
-  intent: 'project_inquiry' | 'technical_question' | 'roadmap_request' | 'unrelated';
+  intent: 'conversational' | 'project_inquiry' | 'technical_question' | 'roadmap_request' | 'project_ideation' | 'architecture_query' | 'tech_stack_selection' | 'viva_prep' | 'code_guidance' | 'unrelated';
   confidence: number;
   explanation: string;
 }
