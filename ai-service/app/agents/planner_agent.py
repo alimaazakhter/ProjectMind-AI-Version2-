@@ -7,6 +7,7 @@ Your role is to formulate deep, university-accredited, production-grade project 
 
 Generate a JSON object strictly matching this schema:
 {
+  "title": "The definitive project title. If a working title is provided by the user, refine it into a polished academic project title. If NO title is provided (auto-synthesis), INVENT a novel, specific, unique, non-generic project title appropriate to the domain, complexity tier, skill level, and preferred technologies. Never reuse boilerplate example titles.",
   "tagline": "A concise, catchy one-line technical subtitle",
   "abstract": "A thorough, 1-2 paragraph executive academic abstract summarizing the domain challenge, the proposed architectural approach, and expected empirical outcomes.",
   "problem_statement": "A thorough, 2-3 paragraph academic problem formulation highlighting current real-world limitations, inefficiencies, and the exact research/engineering gap addressed.",
@@ -55,14 +56,21 @@ Ensure the content is detailed, highly technical, and appropriate for final-year
 class PlannerAgent:
     @staticmethod
     async def execute(title: str, domain: str, skill_level: str, complexity: str, custom_req: str = None) -> Dict[str, Any]:
+        has_title = bool(title and title.strip())
+        title_directive = (
+            f"Working Title (refine into a polished title): {title}"
+            if has_title
+            else "Working Title: NONE PROVIDED — you MUST invent a novel, specific, unique project title "
+                 "(follow any variation seed / novelty instruction in the custom constraints below)."
+        )
         prompt = f"""
-Project Title: {title}
+{title_directive}
 Domain: {domain}
 Target Skill Level: {skill_level}
 Complexity Tier: {complexity}
 Custom Constraints / Instructions: {custom_req or 'None'}
 
-Formulate the complete academic blueprint foundation: Abstract, Problem Statement, Literature Review, Why It Is Useful, Real-World Applications, Objectives, and Prioritized Features.
+Formulate the complete academic blueprint foundation: a fitting project Title, Tagline, Abstract, Problem Statement, Literature Review, Why It Is Useful, Real-World Applications, Objectives, and Prioritized Features.
 Output JSON only.
 """
         return await gemini_client.generate_json(prompt, system_instruction=PLANNER_SYSTEM_PROMPT)

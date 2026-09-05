@@ -178,7 +178,7 @@ export class AdminController {
   static async getProjectDetails(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const projectId = String(req.params.id);
-      const project = await SupabaseService.getProjectById(projectId, 'admin_console');
+      const project = await SupabaseService.getProjectById(projectId, req.userId || '', true);
 
       if (!project) {
         res.status(404).json({

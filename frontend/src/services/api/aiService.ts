@@ -5,6 +5,25 @@ import { MOCK_PROJECTS } from '../mock/mockData';
 const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true';
 const EXPRESS_BASE_URL = process.env.NEXT_PUBLIC_EXPRESS_API_URL || 'http://localhost:5000/api/v1';
 
+export interface ChatSessionSummary {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+  last_message: string;
+}
+
+export interface StoredChatMessage {
+  id: string;
+  session_id: string;
+  sender: 'user' | 'assistant' | 'system';
+  content: string;
+  intent?: string | null;
+  confidence?: number | null;
+  created_at: string;
+}
+
 export class AIService {
   /**
    * Trigger AI Project Generator pipeline through Express backend gateway.
@@ -27,26 +46,22 @@ export class AIService {
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
-      if (payload.userId) headers['x-user-id'] = payload.userId;
+      const { userId: _userId, ...requestPayload } = payload;
 
       const res = await fetch(`${EXPRESS_BASE_URL}/ai/generate-blueprint`, {
         method: 'POST',
         headers,
-        body: JSON.stringify(payload),
+        body: JSON.stringify(requestPayload),
       });
 
       if (!res.ok) throw new Error(`AI Generation request failed with HTTP ${res.status}`);
       const data = await res.json();
       return data.data || data;
     } catch (err) {
-      console.warn('Express AI Gateway call failed, synthesizing client-side blueprint fallback.', err);
-      return {
-        ...MOCK_PROJECTS[0],
-        id: `proj-${Date.now()}`,
-        title: payload.titleIdea || `${payload.domain} Intelligent System`,
-        domain: payload.domain,
-        complexity: payload.complexity,
-      };
+      // No client-side fake blueprint: re-throw so the UI can surface a real error
+      // instead of silently rendering synthetic/generic project content (BUG 16).
+      console.error('Express AI Gateway blueprint request failed (surfacing error, no fallback):', err);
+      throw err;
     }
   }
 
@@ -58,63 +73,70 @@ export class AIService {
     projectId?: string,
     history?: { sender: string; content: string }[],
     token?: string | null,
-    userId?: string
+    userId?: string,
+    sessionId?: string | null
   ): Promise<ChatMessage> {
-    const cleanPrompt = (prompt || '').trim().toLowerCase();
-    const isGreeting = /^(hi|hello|hey|hii|good\s+morning|good\s+afternoon|good\s+evening|what'?s\s+up|yo|sup|thanks|thank\s+you|bye)$/i.test(cleanPrompt);
-
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
-      if (userId) headers['x-user-id'] = userId;
+      const requestBody = { prompt, projectId, sessionId: sessionId || undefined, conversationHistory: history || [] };
 
       const res = await fetch(`${EXPRESS_BASE_URL}/ai/chat`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ prompt, projectId, conversationHistory: history || [], userId }),
+        body: JSON.stringify(requestBody),
       });
 
-      if (!res.ok) throw new Error('Assistant API error');
+      if (!res.ok) throw new Error(`Assistant API error (HTTP ${res.status})`);
       const data = await res.json();
-      return data.data || data;
+      const msg = data.data || data;
+      // Carry the (possibly newly-created) session id back so the UI keeps the thread.
+      if (msg && data.data?.sessionId) msg.session_id = data.data.sessionId;
+      return msg;
     } catch (err) {
-      console.warn('Express AI Assistant call failed, falling back gracefully.', err);
-
-      if (isGreeting) {
-        return {
-          id: `msg-${Date.now()}`,
-          sender: 'assistant',
-          content: `Hey there! 👋 Welcome to ProjectMind AI. How can I help you with your project today?\n\n• **Brainstorming Project Ideas** across AI, Web3, Cloud, Cybersecurity, Healthcare & IoT\n• **System Architecture & Tech Stack Selection** with production-grade tradeoffs\n• **SDLC Implementation Roadmaps & Sprint Planning**\n• **Viva Voce Defense Preparation & Mock Technical Questions**\n• **Starter Code Scaffolding & API Design**\n\nWhat domain or project concept would you like to explore?`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          intentClassification: {
-            intent: 'conversational',
-            confidence: 0.99,
-            explanation: 'Casual greeting recognized.',
-          },
-          suggestedActions: [
-            'Suggest top 3 high-impact AI project ideas for 2026',
-            'Explain how to design an event-driven architecture with Express & FastAPI',
-            'Help me prepare viva questions for my final year project',
-          ],
-        };
-      }
-
+      // Surface an honest error instead of fabricating a canned greeting or a generic
+      // architecture answer that could be mistaken for a real AI reply (BUG 1 / BUG 16).
+      console.error('Express AI Assistant call failed:', err);
       return {
         id: `msg-${Date.now()}`,
         sender: 'assistant',
-        content: `Great question regarding **${prompt}**! In a production architecture, decouple your presentation layer (Next.js 14), API Gateway (Node/Express), and high-concurrency ML microservice (Python/FastAPI). Would you like me to suggest specific datasets, system design diagrams, or viva questions for this topic?`,
+        content:
+          "⚠️ I couldn't reach the AI assistant right now. Please make sure the backend and the Python AI service are running and that GEMINI_API_KEY is configured, then try again.",
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         intentClassification: {
-          intent: 'project_inquiry',
-          confidence: 0.96,
-          explanation: 'Technical inquiry processed.',
+          intent: 'error',
+          confidence: 1,
+          explanation: 'The AI assistant service was unavailable.',
         },
-        suggestedActions: [
-          'What are the key viva defense questions for this?',
-          'Recommend real-world benchmark datasets on Kaggle',
-          'Show me the 3-tier architecture data flow',
-        ],
+        suggestedActions: [],
       };
     }
+  }
+
+  /**
+   * Fetch the authenticated user's chat conversation history (session list).
+   */
+  static async getChatSessions(token?: string | null): Promise<ChatSessionSummary[]> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(`${EXPRESS_BASE_URL}/ai/chat/sessions`, { headers, cache: 'no-store' });
+    if (!res.ok) throw new Error(`Failed to load chat history (HTTP ${res.status})`);
+    const data = await res.json();
+    return data.data || [];
+  }
+
+  /**
+   * Fetch the full message transcript for one chat session.
+   */
+  static async getChatSessionMessages(sessionId: string, token?: string | null): Promise<StoredChatMessage[]> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(`${EXPRESS_BASE_URL}/ai/chat/sessions/${sessionId}/messages`, {
+      headers,
+      cache: 'no-store',
+    });
+    if (!res.ok) throw new Error(`Failed to load conversation (HTTP ${res.status})`);
+    const data = await res.json();
+    return data.data || [];
   }
 }

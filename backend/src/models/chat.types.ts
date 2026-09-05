@@ -1,5 +1,8 @@
 export interface IntentClassification {
-  intent: 'conversational' | 'project_inquiry' | 'technical_question' | 'roadmap_request' | 'project_ideation' | 'architecture_query' | 'tech_stack_selection' | 'viva_prep' | 'code_guidance' | 'unrelated';
+  // The AI service is the source of truth for intent labels (greeting, casual_chat,
+  // general_knowledge, project_ideation, architecture_query, tech_stack_selection,
+  // roadmap_help, viva_prep, code_guidance, ...). Kept as a string to avoid brittle drift.
+  intent: string;
   confidence: number;
   explanation: string;
 }
@@ -32,4 +35,5 @@ export interface ChatMessage {
   timestamp: string;
   isOffTopic?: boolean;
   intentClassification?: IntentClassification;
+  suggestedActions?: string[];
 }

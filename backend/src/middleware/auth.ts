@@ -34,42 +34,27 @@ export const requireAuth = (req: AuthenticatedRequest, res: Response, next: Next
   }
 };
 
-/**
- * Optional authentication middleware.
- * Attaches userId if token is present, but allows request to proceed if absent.
- */
-export const optionalAuth = (req: AuthenticatedRequest, _res: Response, next: NextFunction): void => {
-  try {
-    const auth = getAuth(req);
-    if (auth && auth.userId) {
-      req.userId = auth.userId;
-    }
-  } catch {
-    // Ignore verification failure for optional endpoints
-  }
-  next();
-};
-
-const VALID_ADMIN_PASSCODES = ['1234', 'admin123', 'admin2026', process.env.ADMIN_PASSCODE].filter(Boolean);
+const VALID_ADMIN_PASSCODES = [process.env.ADMIN_PASSCODE].filter(
+  (passcode): passcode is string => Boolean(passcode)
+);
 
 /**
  * Strict Admin Authorization Middleware.
  * Enforces admin privilege:
  * 1. Checks valid x-admin-passcode header, OR
  * 2. Checks verified Clerk authentication with Supabase profile role === 'admin'.
- * 
+ *
  * Rejects unauthorized users / students with HTTP 403 Forbidden.
  */
 export const requireAdmin = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
-    // 1. Passcode Header & Query Authorization Check
-    const headerPasscode = (req.headers['x-admin-passcode'] as string)?.trim();
-    const queryPasscode = ((req.query.passcode || req.query['x-admin-passcode']) as string)?.trim();
-    const adminPasscode = headerPasscode || queryPasscode;
+    // 1. Passcode Authorization Check — HEADER ONLY. The admin secret is never accepted
+    //    from the URL query string, which would leak it into server logs, browser
+    //    history, and proxy caches.
+    const adminPasscode = (req.headers['x-admin-passcode'] as string)?.trim();
 
     if (adminPasscode && VALID_ADMIN_PASSCODES.includes(adminPasscode)) {
       req.userRole = 'admin';
-      req.userId = req.userId || 'admin_console';
       next();
       return;
     }

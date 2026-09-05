@@ -10,7 +10,11 @@ export class ExportController {
     try {
       const id = String(req.params.id);
       const format = String(req.params.format);
-      const userId = req.userId || 'user_demo';
+      const userId = req.userId;
+      if (!userId) {
+        res.status(401).json({ success: false, message: 'Authentication required.' });
+        return;
+      }
 
       if (!['pdf', 'docx', 'ppt', 'md'].includes(format)) {
         res.status(400).json({

@@ -132,7 +132,7 @@ export class SupabaseService {
             project_references (*)
           `)
           .eq('user_id', userId)
-          .order('created_at', { ascending: false });
+          .order('updated_at', { ascending: false });
 
         if (!error && projects) {
           return projects.map((p: any) => this.assembleBlueprint(p));
@@ -249,6 +249,11 @@ export class SupabaseService {
     userId: string,
     requirements?: ProjectRequirement
   ): Promise<ProjectBlueprint> {
+    // Belt-and-suspenders: guarantee an owner profile row exists so admin author
+    // resolution never shows "Unknown User" for a real owner. The full profile
+    // (real email / name) is written by POST /users/sync on login.
+    await this.ensureUserProfileExists(userId);
+
     const projectId = randomUUID();
     const blueprintId = randomUUID();
     const now = new Date().toISOString();
@@ -309,12 +314,18 @@ export class SupabaseService {
 
     if (isSupabaseConfigured && supabase) {
       try {
+        // supabase-js does NOT throw on row-level errors — it returns { error }.
+        // Every insert is therefore checked explicitly and throws on failure, so a
+        // silent partial write can never be reported back to the caller as a saved
+        // project (this was the root cause of history vanishing after re-login).
+
         // 1. Insert projects
-        await supabase.from('projects').insert([projectEntity]);
+        const { error: projectErr } = await supabase.from('projects').insert([projectEntity]);
+        if (projectErr) throw new Error(`projects insert failed: ${projectErr.message}`);
 
         // 2. Insert project_requirements
         if (requirements) {
-          await supabase.from('project_requirements').insert([{
+          const { error: reqErr } = await supabase.from('project_requirements').insert([{
             id: randomUUID(),
             project_id: projectId,
             raw_input: requirements.raw_input || data.title,
@@ -325,10 +336,12 @@ export class SupabaseService {
             custom_requirements: requirements.customRequirements || null,
             created_at: now,
           }]);
+          if (reqErr) throw new Error(`project_requirements insert failed: ${reqErr.message}`);
         }
 
         // 3. Insert blueprints
-        await supabase.from('blueprints').insert([blueprintEntity]);
+        const { error: blueprintErr } = await supabase.from('blueprints').insert([blueprintEntity]);
+        if (blueprintErr) throw new Error(`blueprints insert failed: ${blueprintErr.message}`);
 
         // 4. Insert project_tech_stack
         if (data.tech_stack?.length > 0) {
@@ -340,7 +353,8 @@ export class SupabaseService {
             justification: t.rationale,
             created_at: now,
           }));
-          await supabase.from('project_tech_stack').insert(techRows);
+          const { error: techErr } = await supabase.from('project_tech_stack').insert(techRows);
+          if (techErr) throw new Error(`project_tech_stack insert failed: ${techErr.message}`);
         }
 
         // 5. Insert project_roadmaps
@@ -354,7 +368,8 @@ export class SupabaseService {
             tasks: r.tasks,
             created_at: now,
           }));
-          await supabase.from('project_roadmaps').insert(roadmapRows);
+          const { error: roadErr } = await supabase.from('project_roadmaps').insert(roadmapRows);
+          if (roadErr) throw new Error(`project_roadmaps insert failed: ${roadErr.message}`);
         }
 
         // 6. Insert project_references
@@ -383,11 +398,12 @@ export class SupabaseService {
           });
         });
         if (referenceRows.length > 0) {
-          await supabase.from('project_references').insert(referenceRows);
+          const { error: refErr } = await supabase.from('project_references').insert(referenceRows);
+          if (refErr) throw new Error(`project_references insert failed: ${refErr.message}`);
         }
 
         // 7. Insert project_history
-        await supabase.from('project_history').insert([{
+        const { error: histErr } = await supabase.from('project_history').insert([{
           id: randomUUID(),
           project_id: projectId,
           user_id: userId,
@@ -396,8 +412,23 @@ export class SupabaseService {
           changes_summary: `Initial blueprint generated with ${data.agent_mode.toUpperCase()}-agent mode.`,
           created_at: now,
         }]);
+        if (histErr) throw new Error(`project_history insert failed: ${histErr.message}`);
+
+        // Return the record as actually persisted (database is the source of truth),
+        // so the caller/UI opens the real stored blueprint by its stable ID.
+        const persisted = await this.getProjectById(projectId, userId, true);
+        if (persisted) return persisted;
       } catch (err: any) {
-        console.warn('Supabase createProject warning (persisted to in-memory store):', err.message);
+        // Roll back any partial normalized graph (FK ON DELETE CASCADE clears children)
+        // and drop the optimistic in-memory copy, so a failed persist never lingers or
+        // gets served as if it were saved.
+        await supabase.from('projects').delete().eq('id', projectId);
+        inMemoryProjects.delete(projectId);
+        inMemoryBlueprints.delete(projectId);
+        inMemoryTechStack.delete(projectId);
+        inMemoryRoadmaps.delete(projectId);
+        inMemoryReferences.delete(projectId);
+        throw new Error(`Project persistence failed: ${err.message}`);
       }
     }
 
@@ -510,34 +541,41 @@ export class SupabaseService {
    * Log AI Assistant Chat message inside a structured session.
    */
   static async logChatMessage(
-    chat: { user_id: string; project_id?: string | null; sender: 'user' | 'assistant' | 'system'; content: string; intent?: string | null; confidence?: number | null }
+    chat: { user_id: string; project_id?: string | null; session_id?: string | null; sender: 'user' | 'assistant' | 'system'; content: string; intent?: string | null; confidence?: number | null }
   ): Promise<ChatMessage> {
     const now = new Date().toISOString();
-    let sessionId: string;
+    let sessionId: string | null = chat.session_id && chat.session_id.length === 36 ? chat.session_id : null;
 
     const validProjectId = chat.project_id && chat.project_id.length === 36 ? chat.project_id : null;
+    const derivedTitle = chat.content.substring(0, 48) + (chat.content.length > 48 ? '…' : '');
 
     if (isSupabaseConfigured && supabase) {
-      // Find existing session or create a new one
-      const { data: sessions } = await supabase
-        .from('chat_sessions')
-        .select('id')
-        .eq('user_id', chat.user_id)
-        .order('created_at', { ascending: false })
-        .limit(1);
+      // Use the caller-supplied session if it exists AND belongs to this user; otherwise
+      // start a NEW session. This is what makes "New Chat" work — each new conversation
+      // gets its own session instead of everything piling into one.
+      if (sessionId) {
+        const { data: owned } = await supabase
+          .from('chat_sessions')
+          .select('id')
+          .eq('id', sessionId)
+          .eq('user_id', chat.user_id)
+          .maybeSingle();
+        if (!owned) sessionId = null;
+      }
 
-      if (sessions && sessions.length > 0) {
-        sessionId = sessions[0].id;
-      } else {
+      if (!sessionId) {
         sessionId = randomUUID();
         await supabase.from('chat_sessions').insert([{
           id: sessionId,
           project_id: validProjectId,
           user_id: chat.user_id,
-          title: chat.content.substring(0, 30) + '...',
+          title: derivedTitle,
           created_at: now,
           updated_at: now,
         }]);
+      } else {
+        // Keep the session sorted to the top of the history list.
+        await supabase.from('chat_sessions').update({ updated_at: now }).eq('id', sessionId);
       }
 
       // Insert message
@@ -562,18 +600,22 @@ export class SupabaseService {
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
     } else {
-      sessionId = `sess-${chat.user_id}`;
-      if (!inMemorySessions.has(sessionId)) {
+      if (sessionId && !inMemorySessions.has(sessionId)) sessionId = null;
+      if (!sessionId) {
+        sessionId = randomUUID();
         inMemorySessions.set(sessionId, {
           id: sessionId,
           project_id: validProjectId,
           user_id: chat.user_id,
-          title: chat.content.substring(0, 30) + '...',
+          title: derivedTitle,
           created_at: now,
           updated_at: now,
         });
+      } else {
+        const s = inMemorySessions.get(sessionId);
+        if (s) inMemorySessions.set(sessionId, { ...s, updated_at: now });
       }
-      const msgId = `msg-${Date.now()}`;
+      const msgId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       inMemoryMessages.push({
         id: msgId,
         session_id: sessionId,
@@ -592,6 +634,111 @@ export class SupabaseService {
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
     }
+  }
+
+  /**
+   * List a user's chat sessions (most recently active first) with message counts and a
+   * preview of the last message — powers the Chat History sidebar. Strictly user-scoped.
+   */
+  static async getChatSessionsByUser(userId: string): Promise<
+    { id: string; title: string; created_at: string; updated_at: string; message_count: number; last_message: string }[]
+  > {
+    if (!userId) return [];
+
+    if (isSupabaseConfigured && supabase) {
+      const { data: sessions, error } = await supabase
+        .from('chat_sessions')
+        .select('id, title, created_at, updated_at')
+        .eq('user_id', userId)
+        .order('updated_at', { ascending: false });
+
+      if (error || !sessions) {
+        console.warn('getChatSessionsByUser warning:', error?.message);
+        return [];
+      }
+      if (sessions.length === 0) return [];
+
+      const ids = sessions.map((s: any) => s.id);
+      const { data: msgs } = await supabase
+        .from('chat_messages')
+        .select('session_id, content, created_at')
+        .in('session_id', ids)
+        .order('created_at', { ascending: true });
+
+      const countMap: Record<string, number> = {};
+      const lastMap: Record<string, string> = {};
+      (msgs || []).forEach((m: any) => {
+        countMap[m.session_id] = (countMap[m.session_id] || 0) + 1;
+        lastMap[m.session_id] = m.content; // ascending order → ends on the latest
+      });
+
+      return sessions.map((s: any) => ({
+        id: s.id,
+        title: s.title || 'Untitled conversation',
+        created_at: s.created_at,
+        updated_at: s.updated_at,
+        message_count: countMap[s.id] || 0,
+        last_message: (lastMap[s.id] || '').substring(0, 90),
+      }));
+    }
+
+    return Array.from(inMemorySessions.values())
+      .filter((s) => s.user_id === userId)
+      .sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1))
+      .map((s) => {
+        const sessionMsgs = inMemoryMessages.filter((m) => m.session_id === s.id);
+        return {
+          id: s.id,
+          title: s.title || 'Untitled conversation',
+          created_at: s.created_at,
+          updated_at: s.updated_at,
+          message_count: sessionMsgs.length,
+          last_message: (sessionMsgs[sessionMsgs.length - 1]?.content || '').substring(0, 90),
+        };
+      });
+  }
+
+  /**
+   * Fetch all messages for one chat session, enforcing that the session belongs to the
+   * requesting user. Returns messages oldest-first for direct transcript rendering.
+   */
+  static async getChatMessagesBySession(
+    sessionId: string,
+    userId: string
+  ): Promise<ChatMessageEntity[]> {
+    if (!sessionId || !userId) return [];
+
+    if (isSupabaseConfigured && supabase) {
+      const { data: session } = await supabase
+        .from('chat_sessions')
+        .select('id, user_id')
+        .eq('id', sessionId)
+        .maybeSingle();
+
+      if (!session || session.user_id !== userId) {
+        throw new Error('Forbidden: You do not have access to this chat session.');
+      }
+
+      const { data: messages, error } = await supabase
+        .from('chat_messages')
+        .select('id, session_id, sender, content, intent, confidence, created_at')
+        .eq('session_id', sessionId)
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.warn('getChatMessagesBySession warning:', error.message);
+        return [];
+      }
+      return (messages || []) as ChatMessageEntity[];
+    }
+
+    const s = inMemorySessions.get(sessionId);
+    if (!s || s.user_id !== userId) {
+      throw new Error('Forbidden: You do not have access to this chat session.');
+    }
+    return inMemoryMessages
+      .filter((m) => m.session_id === sessionId)
+      .sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
   }
 
   /**
@@ -710,6 +857,27 @@ export class SupabaseService {
       return data || null;
     }
     return inMemoryProfiles.get(clerkUserId) || null;
+  }
+
+  /**
+   * Best-effort guarantee that a profile row exists for a project owner, so admin
+   * author resolution never shows "Unknown User" for a real user. If POST /users/sync
+   * hasn't run yet, a minimal placeholder is provisioned; the real email/name is
+   * written by /users/sync on the user's next login. Never throws — profile
+   * provisioning must never block project generation.
+   */
+  private static async ensureUserProfileExists(userId: string): Promise<void> {
+    if (!userId) return;
+    try {
+      const existing = await this.getUserProfile(userId);
+      if (existing) return;
+      await this.syncUserProfile({
+        clerk_user_id: userId,
+        email: `${userId}@projectmind.ai`,
+      });
+    } catch {
+      // Non-fatal by design.
+    }
   }
 
   /**
@@ -979,8 +1147,8 @@ export class SupabaseService {
           const authorMap: Record<string, { email: string; full_name: string }> = {};
           (profiles || []).forEach((prof: any) => {
             const entry = {
-              email: prof.email || 'student@projectmind.ai',
-              full_name: prof.full_name || prof.email?.split('@')[0] || 'Student',
+              email: prof.email || 'Unknown Email',
+              full_name: prof.full_name || prof.email?.split('@')[0] || 'Unknown User',
             };
             if (prof.clerk_user_id) authorMap[prof.clerk_user_id] = entry;
             if (prof.id) authorMap[prof.id] = entry;
@@ -988,9 +1156,9 @@ export class SupabaseService {
 
           return (projects || []).map((p: any) => {
             const bp = Array.isArray(p.blueprints) ? p.blueprints[0] : p.blueprints;
-            const author = authorMap[p.user_id] || (p.user_id === 'user_demo'
+            const author = authorMap[p.user_id] || (p.user_id === DEMO_USER_ID
               ? { email: 'demo@projectmind.ai', full_name: 'Demo Project Account' }
-              : { email: 'unlinked@projectmind.ai', full_name: 'Unlinked Student' });
+              : { email: 'Unknown Email', full_name: 'Unknown User' });
 
             return {
               id: p.id,
@@ -1020,15 +1188,15 @@ export class SupabaseService {
       return {
         id: p.id,
         user_id: p.user_id,
-        author_name: user?.full_name || (p.user_id === 'user_demo' ? 'Alimaaz Akhter' : 'Student'),
-        author_email: user?.email || (p.user_id === 'user_demo' ? 'demo@projectmind.ai' : 'student@projectmind.ai'),
+        author_name: user?.full_name || (p.user_id === DEMO_USER_ID ? 'Demo Project Account' : 'Unknown User'),
+        author_email: user?.email || (p.user_id === DEMO_USER_ID ? 'demo@projectmind.ai' : 'Unknown Email'),
         title: p.title,
         domain: p.domain,
         complexity: p.complexity,
         agent_mode: p.agent_mode,
         status: p.status,
-        tagline: bp?.tagline || 'Autonomous AI Blueprint',
-        problem_statement: bp?.problem_statement || 'Static analysis vulnerability detection.',
+        tagline: bp?.tagline || '',
+        problem_statement: bp?.problem_statement || '',
         has_blueprint: Boolean(bp && (bp.problem_statement || bp.title)),
         created_at: p.created_at || new Date().toISOString(),
       };

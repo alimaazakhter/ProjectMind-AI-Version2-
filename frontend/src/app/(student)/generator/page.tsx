@@ -168,23 +168,31 @@ export default function GeneratorPage() {
   const TECH_CATEGORIES = [
     {
       category: 'Frontend & Client',
-      items: ['Next.js 14', 'React', 'TypeScript', 'Tailwind CSS', 'React Native', 'Flutter', 'Vue.js'],
+      items: ['Next.js 14', 'React', 'TypeScript', 'JavaScript', 'Tailwind CSS', 'Angular', 'Vue.js', 'Svelte', 'Remix', 'Redux', 'React Native', 'Flutter', 'Expo', 'HTML5 / CSS3'],
     },
     {
       category: 'Backend & APIs',
-      items: ['Node.js', 'Express.js', 'Python', 'FastAPI', 'Django', 'Go', 'Rust', 'Spring Boot'],
+      items: ['Node.js', 'Express.js', 'NestJS', 'Python', 'FastAPI', 'Flask', 'Django', 'Go', 'Rust', 'Java', 'Spring Boot', '.NET Core', 'Ruby on Rails', 'PHP / Laravel', 'GraphQL', 'gRPC', 'WebSockets'],
     },
     {
       category: 'AI / Machine Learning',
-      items: ['PyTorch', 'TensorFlow', 'Scikit-Learn', 'XGBoost', 'LangChain', 'HuggingFace', 'OpenCV', 'YOLOv8'],
+      items: ['PyTorch', 'TensorFlow', 'Keras', 'Scikit-Learn', 'XGBoost', 'LightGBM', 'Pandas', 'NumPy', 'LangChain', 'LlamaIndex', 'HuggingFace', 'Transformers', 'spaCy', 'NLTK', 'OpenCV', 'YOLOv8', 'ONNX', 'Ollama', 'OpenAI API', 'Gemini API'],
     },
     {
       category: 'Databases & Vector Stores',
-      items: ['PostgreSQL', 'Supabase', 'MongoDB', 'Redis', 'Pinecone', 'Qdrant', 'Neo4j'],
+      items: ['PostgreSQL', 'Supabase', 'MySQL', 'SQLite', 'MongoDB', 'Redis', 'Cassandra', 'Elasticsearch', 'Firebase', 'DynamoDB', 'Prisma ORM', 'Pinecone', 'Qdrant', 'Weaviate', 'ChromaDB', 'Neo4j'],
     },
     {
       category: 'Cloud & Infrastructure',
-      items: ['Docker', 'Kubernetes', 'AWS', 'Kafka', 'WebAssembly', 'Solidity'],
+      items: ['Docker', 'Kubernetes', 'AWS', 'Google Cloud (GCP)', 'Microsoft Azure', 'Vercel', 'Netlify', 'Nginx', 'Terraform', 'GitHub Actions', 'Jenkins', 'Kafka', 'RabbitMQ', 'Prometheus', 'Grafana'],
+    },
+    {
+      category: 'Blockchain & Web3',
+      items: ['Solidity', 'Hardhat', 'Ethers.js', 'Web3.js', 'Foundry', 'IPFS', 'Solana', 'Rust (Anchor)', 'WebAssembly'],
+    },
+    {
+      category: 'IoT, Edge & Systems',
+      items: ['ROS2', 'MQTT', 'Raspberry Pi', 'Arduino', 'Edge TPU', 'C++', 'CUDA', 'Rust (Embedded)'],
     },
   ];
 
@@ -222,6 +230,9 @@ export default function GeneratorPage() {
   };
 
   const handleGenerate = async () => {
+    // Hard guard against duplicate submissions (double-click / re-entry). Without this
+    // a second click fires a second generation → a duplicate project row (BUG 7 / BUG 20).
+    if (isGenerating) return;
     setIsGenerating(true);
     setPipelineProgress(15);
     setStatusMessage('1/4: Initializing Planner Agent (Abstract, Literature Review, Objectives)...');
@@ -243,9 +254,19 @@ export default function GeneratorPage() {
 
     try {
       const token = await getToken();
-      const effectiveTitle = titleIdea.trim() || currentDomainConfig.suggestions[0]?.title || `${domain} Intelligent System Architecture`;
+      // AUTO-SYNTHESIS MODE: if the user leaves the title blank, we must NOT reuse a
+      // hard-coded suggestion (that made every generation produce the same project).
+      // Instead we send an empty title + a unique variation seed and let the AI invent
+      // a fresh, domain/complexity/skill-appropriate title each time.
+      const isAuto = !titleIdea.trim();
+      const variationSeed = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      const effectiveTitle = titleIdea.trim();
       const effectiveTech = preferredTech.length > 0 ? preferredTech : currentDomainConfig.suggestions[0]?.tech || ['Next.js 14', 'Node.js/Express', 'Python FastAPI', 'PostgreSQL'];
-      const effectiveConstraints = customRequirements.trim() || currentDomainConfig.suggestions[0]?.constraints || '';
+      const effectiveConstraints = customRequirements.trim();
+
+      const autoDirective = isAuto
+        ? `Invent a NOVEL, specific, previously-unseen ${complexity} project title suitable for a ${skillLevel}-level developer in the "${domain}" domain. Do NOT reuse common/example titles. Variation seed: ${variationSeed}.`
+        : '';
 
       const blueprint = await AIService.generateBlueprint({
         titleIdea: effectiveTitle,
@@ -254,7 +275,7 @@ export default function GeneratorPage() {
         preferredTech: effectiveTech,
         complexity,
         agentMode,
-        customRequirements: `${effectiveConstraints} | Included Sections: ${Object.keys(selectedSections).filter((k) => selectedSections[k]).join(', ')}`,
+        customRequirements: `${autoDirective}${effectiveConstraints ? ` ${effectiveConstraints}` : ''} | Included Sections: ${Object.keys(selectedSections).filter((k) => selectedSections[k]).join(', ')}`,
         userId: user?.id,
       }, token);
 
@@ -263,8 +284,15 @@ export default function GeneratorPage() {
       setTimeout(() => {
         router.push(`/workspace/${blueprint.id}`);
       }, 500);
-    } catch {
-      alert('Generation failed. Please check your backend connection.');
+    } catch (err: any) {
+      // Surface the real backend/AI error instead of a vague message, and never
+      // navigate to a fake blueprint — generation genuinely failed.
+      const detail = err?.message || 'Unknown error';
+      setPipelineProgress(0);
+      setStatusMessage('');
+      alert(
+        `Generation failed: ${detail}\n\nMake sure the backend (:5000) and the Python AI service (:8000) are running and that GEMINI_API_KEY is configured.`
+      );
       setIsGenerating(false);
     } finally {
       clearTimeout(timer1);

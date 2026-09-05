@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
 import {
   Shield,
@@ -41,6 +42,7 @@ type AdminTab = 'overview' | 'users' | 'projects' | 'chat_logs' | 'ai_engine' | 
 export default function AdminDashboardPage() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [passcode, setPasscode] = useState('');
+  const { getToken } = useAuth();
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -74,8 +76,6 @@ export default function AdminDashboardPage() {
   const [selectedTemp, setSelectedTemp] = useState<number>(0.4);
   const [isUpdatingAI, setIsUpdatingAI] = useState(false);
 
-  const VALID_PASSCODES = ['1234', 'admin123', 'admin2026'];
-
   const showNotification = (msg: string, isErr = false) => {
     if (isErr) {
       setActionError(msg);
@@ -90,19 +90,19 @@ export default function AdminDashboardPage() {
     e.preventDefault();
     setLoading(true);
     setError(false);
-
-    setTimeout(() => {
-      if (VALID_PASSCODES.includes(passcode.trim())) {
-        setIsAuthenticated(true);
-        setError(false);
-      } else {
-        setError(true);
-      }
+    getToken().then((token) => {
+      AdminService.setAuthToken(token);
+      setIsAuthenticated(Boolean(token));
+      setError(!token);
       setLoading(false);
-    }, 300);
+    }).catch(() => {
+      setError(true);
+      setLoading(false);
+    });
   };
 
   const handleLock = () => {
+    AdminService.setAuthToken(null);
     setIsAuthenticated(false);
     setPasscode('');
     setOverview(null);
@@ -329,7 +329,7 @@ export default function AdminDashboardPage() {
             <p className="text-[11px] text-[#777777]">
               <span className="text-[#555555] font-medium">Demo Access PIN:</span>{' '}
               <code className="text-[#7A263A] font-bold font-mono">1234</code> or{' '}
-              <code className="text-[#7A263A] font-bold font-mono">admin123</code>
+              <code className="text-[#7A263A] font-bold font-mono">Use your authorized Clerk account</code>
             </p>
           </div>
         </div>
@@ -1108,23 +1108,31 @@ export default function AdminDashboardPage() {
             </p>
 
             <div className="flex items-center gap-3 pt-2">
-              <a
-                href={AdminService.getAuditReportUrl('json', passcode)}
-                download="projectmind-audit-report.json"
+              <button
+                type="button"
+                onClick={() =>
+                  AdminService.downloadAuditReport('json', passcode).catch((e) =>
+                    alert(e?.message || 'Failed to download audit report.')
+                  )
+                }
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#FAF8F5] border border-[#EBE6DF] hover:border-[#7A263A] text-xs font-bold text-[#202020] transition-colors"
               >
                 <Download className="w-3.5 h-3.5 text-[#7A263A]" />
                 <span>Download Audit Report (JSON)</span>
-              </a>
+              </button>
 
-              <a
-                href={AdminService.getAuditReportUrl('csv', passcode)}
-                download="projectmind-audit-report.csv"
+              <button
+                type="button"
+                onClick={() =>
+                  AdminService.downloadAuditReport('csv', passcode).catch((e) =>
+                    alert(e?.message || 'Failed to download audit report.')
+                  )
+                }
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#FAF8F5] border border-[#EBE6DF] hover:border-[#7A263A] text-xs font-bold text-[#202020] transition-colors"
               >
                 <Download className="w-3.5 h-3.5 text-[#875F34]" />
                 <span>Download Summary (CSV)</span>
-              </a>
+              </button>
             </div>
           </div>
         </div>

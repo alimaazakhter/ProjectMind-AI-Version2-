@@ -14,6 +14,14 @@ export const generatorPayloadSchema = z.object({
 export const chatPayloadSchema = z.object({
   prompt: z.string().min(1, 'Prompt cannot be empty'),
   projectId: z.string().uuid().optional().nullable(),
+  // Conversation the reply should continue (omit / null to start a new one).
+  sessionId: z.string().uuid().optional().nullable(),
+  // Multi-turn history for context — must be whitelisted here or zod strips it before
+  // it reaches the controller (which is why prior multi-turn context was being lost).
+  conversationHistory: z
+    .array(z.object({ sender: z.string(), content: z.string() }))
+    .optional()
+    .default([]),
 });
 
 export const projectUpdateSchema = z.object({

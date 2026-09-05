@@ -8,7 +8,11 @@ export class UserController {
    */
   static async syncProfile(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const clerkUserId = req.userId || req.body.clerk_user_id || 'user_demo';
+      const clerkUserId = req.userId;
+      if (!clerkUserId) {
+        res.status(401).json({ success: false, message: 'Authentication required.' });
+        return;
+      }
       const { email, full_name, university, semester, academic_level, role } = req.body;
 
       if (!email && !clerkUserId) {
@@ -41,7 +45,11 @@ export class UserController {
    */
   static async getProfile(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const clerkUserId = req.userId || 'user_demo';
+      const clerkUserId = req.userId;
+      if (!clerkUserId) {
+        res.status(401).json({ success: false, message: 'Authentication required.' });
+        return;
+      }
       const profile = await SupabaseService.getUserProfile(clerkUserId);
 
       if (!profile) {
@@ -64,7 +72,11 @@ export class UserController {
    */
   static async updateProfile(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const clerkUserId = req.userId || 'user_demo';
+      const clerkUserId = req.userId;
+      if (!clerkUserId) {
+        res.status(401).json({ success: false, message: 'Authentication required.' });
+        return;
+      }
       const updated = await SupabaseService.updateUserProfile(clerkUserId, req.body);
 
       res.status(200).json({

@@ -13,7 +13,7 @@ from app.schemas.blueprint import (
 )
 from app.agents.orchestrator import MultiAgentOrchestrator
 from app.agents.chat_agent import ChatAgent
-from app.services.gemini_service import gemini_client
+from app.services.gemini_service import gemini_client, QuotaExceededError
 
 # Configure logging
 logging.basicConfig(
@@ -102,10 +102,13 @@ async def generate_blueprint(request: BlueprintGenerateRequest):
         logger.info(f"Received Blueprint Generation Request for '{request.title_idea}' in [{request.domain}]")
         result = await MultiAgentOrchestrator.generate_blueprint(request)
         return result
+    except QuotaExceededError as err:
+        logger.warning(f"Blueprint generation rate-limited: {err}")
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(err))
     except Exception as err:
-        logger.error(f"Blueprint generation failed: {err}")
+        logger.error(f"Blueprint generation failed: {err}", exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"AI Blueprint Generation failed: {str(err)}",
         )
 
@@ -119,27 +122,19 @@ async def generate_blueprint(request: BlueprintGenerateRequest):
 async def chat_assistant(request: ChatRequest):
     try:
         logger.info(f"Received Chat Query: {request.prompt[:60]}...")
-        if gemini_client.is_configured:
-            result = await ChatAgent.execute(
-                prompt=request.prompt,
-                project_context=request.project_id,
-                history=request.conversation_history,
-            )
-            return result
-        else:
-            return {
-                "content": f"I can assist you with your academic project. Here are recommendations for **{request.prompt}**:\n\n1. **Decoupled Architecture**: Separate your presentation layer, API gateway, and microservice workers.\n2. **Database Normalization**: Ensure foreign key constraints and indexes are placed on relational tables.\n3. **Viva Defense**: Be prepared to explain your concurrency model, auth token validation, and caching strategy.",
-                "intent": "general_query",
-                "confidence": 0.92,
-                "suggestedActions": [
-                    "How to prepare architecture viva questions?",
-                    "Generate optimal database schema for this project",
-                ],
-            }
+        result = await ChatAgent.execute(
+            prompt=request.prompt,
+            project_context=request.project_context,
+            history=request.conversation_history,
+        )
+        return result
+    except QuotaExceededError as err:
+        logger.warning(f"Chat rate-limited: {err}")
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(err))
     except Exception as err:
-        logger.error(f"Chat assistant failed: {err}")
+        logger.error(f"Chat assistant failed: {err}", exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Chat generation failed: {str(err)}",
         )
 

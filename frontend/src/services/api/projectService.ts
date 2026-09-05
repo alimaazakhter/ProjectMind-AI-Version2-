@@ -6,16 +6,13 @@ export class ProjectService {
   /**
    * Fetch all projects belonging to the authenticated user from Express backend.
    */
-  static async getAllProjects(token?: string | null, userId?: string | null): Promise<ProjectBlueprint[]> {
+  static async getAllProjects(token?: string | null, _userId?: string | null): Promise<ProjectBlueprint[]> {
     try {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
       };
       if (token) headers['Authorization'] = `Bearer ${token}`;
-      if (userId) headers['x-user-id'] = userId;
-
-      const query = userId ? `?userId=${encodeURIComponent(userId)}` : '';
-      const res = await fetch(`${EXPRESS_BASE_URL}/projects${query}`, {
+      const res = await fetch(`${EXPRESS_BASE_URL}/projects`, {
         headers,
         cache: 'no-store',
       });
@@ -38,16 +35,13 @@ export class ProjectService {
   /**
    * Fetch single project blueprint by ID with ownership verification.
    */
-  static async getProjectById(id: string, token?: string | null, userId?: string | null): Promise<ProjectBlueprint | null> {
+  static async getProjectById(id: string, token?: string | null, _userId?: string | null): Promise<ProjectBlueprint | null> {
     try {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
       };
       if (token) headers['Authorization'] = `Bearer ${token}`;
-      if (userId) headers['x-user-id'] = userId;
-
-      const query = userId ? `?userId=${encodeURIComponent(userId)}` : '';
-      const res = await fetch(`${EXPRESS_BASE_URL}/projects/${id}${query}`, {
+      const res = await fetch(`${EXPRESS_BASE_URL}/projects/${id}`, {
         headers,
         cache: 'no-store',
       });
@@ -72,14 +66,11 @@ export class ProjectService {
     id: string,
     format: 'pdf' | 'docx' | 'ppt' | 'md',
     token?: string | null,
-    userId?: string | null
+    _userId?: string | null
   ): Promise<Blob> {
     const headers: Record<string, string> = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    if (userId) headers['x-user-id'] = userId;
-
-    const query = userId ? `?userId=${encodeURIComponent(userId)}` : '';
-    const res = await fetch(`${EXPRESS_BASE_URL}/export/${id}/${format}${query}`, { headers });
+    const res = await fetch(`${EXPRESS_BASE_URL}/export/${id}/${format}`, { headers });
     if (!res.ok) throw new Error('Export download failed');
     return await res.blob();
   }

@@ -1,8 +1,13 @@
 /**
  * Admin Service — API Client for ProjectMind AI Enterprise Administration
+ *
+ * SECURITY: the admin passcode is ONLY ever sent via the `x-admin-passcode` request
+ * header (see getHeaders). It is never placed in a URL query string, which would leak
+ * the secret into browser history, server access logs, and proxy caches.
  */
 
-const EXPRESS_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api/v1';
+const EXPRESS_BASE_URL =
+  process.env.NEXT_PUBLIC_EXPRESS_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api/v1';
 
 export interface AdminServiceHealth {
   name?: string;
@@ -77,12 +82,21 @@ export interface AdminAIConfig {
 }
 
 export class AdminService {
+  private static authToken: string | null = null;
+
+  static setAuthToken(token: string | null): void {
+    this.authToken = token;
+  }
+
   private static getHeaders(passcode?: string): Record<string, string> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
     if (passcode) {
       headers['x-admin-passcode'] = passcode;
+    }
+    if (this.authToken) {
+      headers.Authorization = `Bearer ${this.authToken}`;
     }
     return headers;
   }
@@ -91,8 +105,7 @@ export class AdminService {
    * Fetch Live Overview, Telemetry, Table Stats, and Microservice Status.
    */
   static async getOverview(passcode?: string): Promise<AdminOverviewData> {
-    const query = passcode ? `?passcode=${encodeURIComponent(passcode)}` : '';
-    const res = await fetch(`${EXPRESS_BASE_URL}/admin/overview${query}`, {
+    const res = await fetch(`${EXPRESS_BASE_URL}/admin/overview`, {
       headers: this.getHeaders(passcode),
       cache: 'no-store',
     });
@@ -108,9 +121,9 @@ export class AdminService {
     const query = new URLSearchParams();
     if (params?.search) query.set('search', params.search);
     if (params?.role) query.set('role', params.role);
-    if (passcode) query.set('passcode', passcode);
 
-    const res = await fetch(`${EXPRESS_BASE_URL}/admin/users?${query.toString()}`, {
+    const qs = query.toString();
+    const res = await fetch(`${EXPRESS_BASE_URL}/admin/users${qs ? `?${qs}` : ''}`, {
       headers: this.getHeaders(passcode),
       cache: 'no-store',
     });
@@ -123,8 +136,7 @@ export class AdminService {
    * Update User Role (student <-> admin).
    */
   static async updateUserRole(userId: string, role: 'student' | 'admin', passcode?: string): Promise<boolean> {
-    const query = passcode ? `?passcode=${encodeURIComponent(passcode)}` : '';
-    const res = await fetch(`${EXPRESS_BASE_URL}/admin/users/${userId}/role${query}`, {
+    const res = await fetch(`${EXPRESS_BASE_URL}/admin/users/${userId}/role`, {
       method: 'PATCH',
       headers: this.getHeaders(passcode),
       body: JSON.stringify({ role }),
@@ -144,9 +156,9 @@ export class AdminService {
     if (params?.search) query.set('search', params.search);
     if (params?.domain) query.set('domain', params.domain);
     if (params?.complexity) query.set('complexity', params.complexity);
-    if (passcode) query.set('passcode', passcode);
 
-    const res = await fetch(`${EXPRESS_BASE_URL}/admin/projects?${query.toString()}`, {
+    const qs = query.toString();
+    const res = await fetch(`${EXPRESS_BASE_URL}/admin/projects${qs ? `?${qs}` : ''}`, {
       headers: this.getHeaders(passcode),
       cache: 'no-store',
     });
@@ -159,8 +171,7 @@ export class AdminService {
    * Delete Project as Administrator.
    */
   static async deleteProject(projectId: string, passcode?: string): Promise<boolean> {
-    const query = passcode ? `?passcode=${encodeURIComponent(passcode)}` : '';
-    const res = await fetch(`${EXPRESS_BASE_URL}/admin/projects/${projectId}${query}`, {
+    const res = await fetch(`${EXPRESS_BASE_URL}/admin/projects/${projectId}`, {
       method: 'DELETE',
       headers: this.getHeaders(passcode),
     });
@@ -175,9 +186,9 @@ export class AdminService {
     const query = new URLSearchParams();
     if (params?.intent) query.set('intent', params.intent);
     if (params?.limit) query.set('limit', String(params.limit));
-    if (passcode) query.set('passcode', passcode);
 
-    const res = await fetch(`${EXPRESS_BASE_URL}/admin/chat-logs?${query.toString()}`, {
+    const qs = query.toString();
+    const res = await fetch(`${EXPRESS_BASE_URL}/admin/chat-logs${qs ? `?${qs}` : ''}`, {
       headers: this.getHeaders(passcode),
       cache: 'no-store',
     });
@@ -190,8 +201,7 @@ export class AdminService {
    * Fetch AI Model Configuration.
    */
   static async getAIConfig(passcode?: string): Promise<AdminAIConfig> {
-    const query = passcode ? `?passcode=${encodeURIComponent(passcode)}` : '';
-    const res = await fetch(`${EXPRESS_BASE_URL}/admin/ai-config${query}`, {
+    const res = await fetch(`${EXPRESS_BASE_URL}/admin/ai-config`, {
       headers: this.getHeaders(passcode),
       cache: 'no-store',
     });
@@ -207,8 +217,7 @@ export class AdminService {
     payload: { model?: string; temperature?: number },
     passcode?: string
   ): Promise<AdminAIConfig> {
-    const query = passcode ? `?passcode=${encodeURIComponent(passcode)}` : '';
-    const res = await fetch(`${EXPRESS_BASE_URL}/admin/ai-config${query}`, {
+    const res = await fetch(`${EXPRESS_BASE_URL}/admin/ai-config`, {
       method: 'POST',
       headers: this.getHeaders(passcode),
       body: JSON.stringify(payload),
@@ -222,8 +231,7 @@ export class AdminService {
    * Run Live Diagnostic Health Ping for all 4 microservices.
    */
   static async pingAllDiagnostics(passcode?: string): Promise<AdminServiceHealth[]> {
-    const query = passcode ? `?passcode=${encodeURIComponent(passcode)}` : '';
-    const res = await fetch(`${EXPRESS_BASE_URL}/admin/diagnostics/ping-all${query}`, {
+    const res = await fetch(`${EXPRESS_BASE_URL}/admin/diagnostics/ping-all`, {
       method: 'POST',
       headers: this.getHeaders(passcode),
     });
@@ -236,8 +244,7 @@ export class AdminService {
    * Flush in-memory application caches.
    */
   static async flushCache(passcode?: string): Promise<{ message: string }> {
-    const query = passcode ? `?passcode=${encodeURIComponent(passcode)}` : '';
-    const res = await fetch(`${EXPRESS_BASE_URL}/admin/cache/flush${query}`, {
+    const res = await fetch(`${EXPRESS_BASE_URL}/admin/cache/flush`, {
       method: 'POST',
       headers: this.getHeaders(passcode),
     });
@@ -246,9 +253,27 @@ export class AdminService {
   }
 
   /**
-   * Trigger Audit Report File Download (JSON / CSV).
+   * Download the System Audit & Telemetry Report (JSON / CSV).
+   *
+   * Uses a header-authenticated fetch (passcode via x-admin-passcode header — never in
+   * the URL) and streams the response into a blob so the browser saves it locally with
+   * the correct filename. `format` is not a secret and is passed as a query param.
    */
-  static getAuditReportUrl(format: 'json' | 'csv', passcode?: string): string {
-    return `${EXPRESS_BASE_URL}/admin/audit-report?format=${format}&passcode=${encodeURIComponent(passcode || '')}`;
+  static async downloadAuditReport(format: 'json' | 'csv', passcode?: string): Promise<void> {
+    const res = await fetch(`${EXPRESS_BASE_URL}/admin/audit-report?format=${format}`, {
+      headers: this.getHeaders(passcode),
+      cache: 'no-store',
+    });
+    if (!res.ok) throw new Error(`Failed to download audit report (HTTP ${res.status})`);
+
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `projectmind-audit-report.${format}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
   }
 }

@@ -12,6 +12,7 @@ export interface AIProjectGeneratorPayload {
 
 export interface ChatMessage {
   id: string;
+  session_id?: string;
   sender: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: string;

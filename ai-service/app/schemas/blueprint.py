@@ -5,7 +5,7 @@ from typing import List, Optional, Dict, Any
 # INPUT SCHEMAS
 # ==========================================
 class BlueprintGenerateRequest(BaseModel):
-    title_idea: str = Field(..., alias="titleIdea", description="Project title or core topic")
+    title_idea: str = Field("", alias="titleIdea", description="Project title or core topic. Empty = auto-synthesize a novel title.")
     domain: str = Field(..., description="Academic / Technology domain")
     skill_level: str = Field("intermediate", alias="skillLevel", description="Target developer skill level")
     preferred_tech: List[str] = Field(default_factory=list, alias="preferredTech", description="List of preferred technologies")
@@ -19,6 +19,7 @@ class BlueprintGenerateRequest(BaseModel):
 class ChatRequest(BaseModel):
     prompt: str = Field(..., description="User prompt or query")
     project_id: Optional[str] = Field(None, alias="projectId", description="Associated Project UUID")
+    project_context: Optional[str] = Field(None, alias="projectContext", description="Human-readable project context (e.g. title and domain) for project-aware replies")
     user_id: Optional[str] = Field(None, alias="userId", description="Clerk User ID")
     conversation_history: Optional[List[Dict[str, str]]] = Field(default_factory=list, alias="conversationHistory")
 
@@ -39,9 +40,9 @@ class TechStackItem(BaseModel):
     rationale: str
 
 class ArchitectureSpec(BaseModel):
-    summary: str
-    components: List[str]
-    diagramDescription: str = Field(..., alias="diagramDescription")
+    summary: Optional[str] = ""
+    components: List[str] = Field(default_factory=list)
+    diagramDescription: Optional[str] = Field(default="", alias="diagramDescription")
 
     class Config:
         populate_by_name = True
@@ -103,19 +104,19 @@ class BlueprintResponse(BaseModel):
     complexity: str
     agent_mode: str = Field("multi", alias="agent_mode")
     abstract: Optional[str] = Field(None, description="Executive academic abstract")
-    problem_statement: str = Field(..., alias="problem_statement")
+    problem_statement: Optional[str] = Field(default="", alias="problem_statement")
     literature_review: Optional[str] = Field(None, alias="literature_review", description="Academic literature review & gap analysis")
     methodology: Optional[List[MethodologyStep]] = Field(default_factory=list, description="Step-by-step implementation methodology")
     algorithms_used: Optional[List[AlgorithmSpec]] = Field(default_factory=list, alias="algorithms_used", description="Deep algorithmic breakdowns")
     why_useful: Optional[List[str]] = Field(default_factory=list, alias="why_useful", description="Key utility & productivity benefits")
     real_world_applications: Optional[List[RealWorldApplication]] = Field(default_factory=list, alias="real_world_applications", description="Practical industry deployment domains")
-    objectives: List[str]
-    features: List[FeatureItem]
-    tech_stack: List[TechStackItem] = Field(..., alias="tech_stack")
-    architecture: ArchitectureSpec
+    objectives: List[str] = Field(default_factory=list)
+    features: List[FeatureItem] = Field(default_factory=list)
+    tech_stack: List[TechStackItem] = Field(default_factory=list, alias="tech_stack")
+    architecture: Optional[ArchitectureSpec] = None
     datasets: List[DatasetItem] = Field(default_factory=list)
     research_references: List[ResearchReferenceItem] = Field(default_factory=list, alias="research_references")
-    roadmap: List[RoadmapPhase]
+    roadmap: List[RoadmapPhase] = Field(default_factory=list)
     viva_questions: List[VivaQuestion] = Field(default_factory=list, alias="viva_questions")
     starter_code: List[StarterCodeItem] = Field(default_factory=list, alias="starter_code")
     uniquifier_suggestions: List[str] = Field(default_factory=list, alias="uniquifier_suggestions")

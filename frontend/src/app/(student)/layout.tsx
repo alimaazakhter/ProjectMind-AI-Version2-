@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { UserButton, useUser } from '@clerk/nextjs';
+import { UserButton, useUser, useAuth } from '@clerk/nextjs';
 import {
   LayoutDashboard,
   Sparkles,
@@ -31,35 +31,51 @@ export default function StudentDashboardLayout({
 }) {
   const pathname = usePathname();
   const { user, isLoaded } = useUser();
+  const { getToken } = useAuth();
   const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
   const [mobileOpen, setMobileOpen] = useState<boolean>(false);
 
-  // Automatically sync logged-in Clerk profile with Supabase database
+  // Automatically sync logged-in Clerk profile with Supabase database.
+  // The /users/sync route is auth-protected and derives identity from the verified
+  // token (never a frontend-supplied id), so we MUST attach the Clerk session token —
+  // otherwise the request 401s and the owner profile is never created (which made
+  // admin author resolution show "Unknown User").
   React.useEffect(() => {
-    if (isLoaded && user) {
-      const email = user.primaryEmailAddress?.emailAddress;
-      const fullName = user.fullName || user.username || email?.split('@')[0];
-      const apiUrl = process.env.NEXT_PUBLIC_EXPRESS_API_URL || 'http://localhost:5000/api/v1';
+    if (!isLoaded || !user) return;
 
-      fetch(`${apiUrl}/users/sync`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          clerk_user_id: user.id,
-          email,
-          full_name: fullName,
-        }),
-      }).catch((err) => console.warn('User profile sync skipped:', err));
-    }
-  }, [isLoaded, user]);
+    const syncProfile = async () => {
+      try {
+        const token = await getToken();
+        if (!token) return; // Session token not ready yet; effect re-runs on auth change.
+
+        const email = user.primaryEmailAddress?.emailAddress;
+        const fullName = user.fullName || user.username || email?.split('@')[0];
+        const apiUrl = process.env.NEXT_PUBLIC_EXPRESS_API_URL || 'http://localhost:5000/api/v1';
+
+        await fetch(`${apiUrl}/users/sync`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          // Identity is derived server-side from the token; we only send the display fields.
+          body: JSON.stringify({ email, full_name: fullName }),
+        });
+      } catch (err) {
+        console.warn('User profile sync skipped:', err);
+      }
+    };
+
+    syncProfile();
+  }, [isLoaded, user, getToken]);
 
   return (
     <div className="min-h-screen bg-[#FAF8F5] text-[#202020] flex flex-col md:flex-row font-sans">
       {/* Mobile Top Navbar with Sidebar Toggle */}
       <div className="md:hidden bg-[#F6F2EB] border-b border-[#EBE6DF] px-4 py-3 flex items-center justify-between sticky top-0 z-40">
         <Link href="/dashboard" className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-[#7A263A] flex items-center justify-center text-white shadow-xs">
-            <Sparkles className="w-4 h-4" />
+          <div className="w-7 h-7 rounded-lg bg-[#7A263A] flex items-center justify-center text-white shadow-xs font-black text-sm leading-none">
+            P
           </div>
           <span className="font-bold text-[#202020] text-sm">ProjectMind AI</span>
         </Link>
@@ -83,8 +99,8 @@ export default function StudentDashboardLayout({
         <div className="p-4 border-b border-[#EBE6DF] flex items-center justify-between h-16">
           {!isCollapsed ? (
             <Link href="/dashboard" className="flex items-center gap-2.5 group overflow-hidden">
-              <div className="w-8 h-8 rounded-lg bg-[#7A263A] flex items-center justify-center text-white shadow-xs shrink-0">
-                <Sparkles className="w-4 h-4" />
+              <div className="w-8 h-8 rounded-lg bg-[#7A263A] flex items-center justify-center text-white shadow-xs shrink-0 font-black text-base leading-none">
+                P
               </div>
               <div className="truncate">
                 <span className="font-bold text-[#202020] text-sm tracking-tight block leading-none">
@@ -95,8 +111,8 @@ export default function StudentDashboardLayout({
             </Link>
           ) : (
             <Link href="/dashboard" className="mx-auto" title="ProjectMind AI">
-              <div className="w-8 h-8 rounded-lg bg-[#7A263A] flex items-center justify-center text-white shadow-xs">
-                <Sparkles className="w-4 h-4" />
+              <div className="w-8 h-8 rounded-lg bg-[#7A263A] flex items-center justify-center text-white shadow-xs font-black text-base leading-none">
+                P
               </div>
             </Link>
           )}
