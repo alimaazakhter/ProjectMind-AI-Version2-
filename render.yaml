@@ -1,0 +1,73 @@
+# ProjectMind AI — Render Blueprint
+# Deploys the two server-side services (Express backend + FastAPI AI worker).
+# The Next.js frontend is deployed separately on Vercel.
+#
+# In the Render dashboard: New + -> Blueprint -> pick this repo. Render reads this file,
+# creates both services, and prompts you for the secret env vars marked `sync: false`.
+# See DEPLOYMENT.md for the exact values and the deploy order.
+
+services:
+  # ------------------------------------------------------------------
+  # 1) Node.js + Express REST gateway
+  # ------------------------------------------------------------------
+  - type: web
+    name: projectmind-backend
+    runtime: node
+    rootDir: backend
+    plan: free
+    # tsx/typescript/@types live in devDependencies, so dev deps MUST be installed
+    # for the `tsc` build to succeed even when NODE_ENV=production.
+    buildCommand: npm install --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # URL of the deployed Vercel frontend (e.g. https://projectmind-ai.vercel.app)
+      - key: FRONTEND_URL
+        sync: false
+      # Extra allowed browser origins, comma-separated (optional). *.vercel.app is
+      # already allowed automatically for preview deployments.
+      - key: ALLOWED_ORIGINS
+        sync: false
+      # URL of the deployed FastAPI AI service + its base path, e.g.
+      # https://projectmind-ai-worker.onrender.com/api/v1/ai
+      - key: FASTAPI_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: CLERK_PUBLISHABLE_KEY
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: ADMIN_PASSCODE
+        sync: false
+
+  # ------------------------------------------------------------------
+  # 2) Python + FastAPI AI microservice (Gemini multi-agent engine)
+  # ------------------------------------------------------------------
+  - type: web
+    name: projectmind-ai-worker
+    runtime: python
+    rootDir: ai-service
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: ENVIRONMENT
+        value: production
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash
+      # Allowed origins for the AI service (comma-separated). It is called
+      # server-to-server by the backend, so this is mostly belt-and-suspenders.
+      - key: ALLOWED_ORIGINS
+        sync: false

@@ -22,9 +22,27 @@ app.use(
   })
 );
 
+// Build the CORS allow-list from env: FRONTEND_URL + optional comma-separated
+// ALLOWED_ORIGINS + localhost dev origins. Vercel preview deployments (*.vercel.app)
+// are also allowed so preview URLs keep working without a redeploy. All real API
+// operations still require a valid Clerk token, so this is safe.
+const staticAllowedOrigins = [
+  env.FRONTEND_URL,
+  ...(env.ALLOWED_ORIGINS ? env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()) : []),
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+].filter(Boolean);
+
 app.use(
   cors({
-    origin: [env.FRONTEND_URL, 'http://localhost:3000', 'http://127.0.0.1:3000'],
+    origin: (origin, callback) => {
+      // Allow non-browser clients (curl, server-to-server, health checks) with no Origin.
+      if (!origin) return callback(null, true);
+      if (staticAllowedOrigins.includes(origin) || /\.vercel\.app$/.test(new URL(origin).hostname)) {
+        return callback(null, true);
+      }
+      return callback(new Error(`Origin not allowed by CORS: ${origin}`));
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-passcode', 'X-Admin-Passcode'],
