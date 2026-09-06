@@ -14,7 +14,9 @@ export const errorHandler = (
   const statusCode = err.statusCode || 500;
   const message = err.message || 'Internal Server Error';
 
-  if (process.env.NODE_ENV === 'development') {
+  // Always log server errors (5xx) so production failures are diagnosable in the
+  // platform logs; 4xx are expected client errors and only logged in development.
+  if (statusCode >= 500 || process.env.NODE_ENV === 'development') {
     console.error(`[Error] ${statusCode} - ${message}`, err.stack);
   }
 
