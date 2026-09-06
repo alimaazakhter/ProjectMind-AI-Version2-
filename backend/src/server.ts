@@ -53,27 +53,21 @@ app.use(morgan(env.NODE_ENV === 'development' ? 'dev' : 'combined'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// 2. Official Clerk Authentication Middleware
+// 2. Health & Readiness Probe Endpoints — registered BEFORE auth so the platform
+// health check never depends on Clerk being configured (an unconfigured/invalid
+// Clerk key otherwise 500s every request, including /health, so the service never
+// goes "Live" on Render).
+const healthPayload = () => ({
+  status: 'healthy',
+  timestamp: new Date().toISOString(),
+  service: 'ProjectMind AI Express Gateway',
+  version: '1.0.0',
+});
+app.get('/health', (_req, res) => res.status(200).json(healthPayload()));
+app.get('/api/v1/health', (_req, res) => res.status(200).json(healthPayload()));
+
+// 3. Official Clerk Authentication Middleware
 app.use(clerkMiddleware());
-
-// 3. Health & Readiness Probe Endpoints
-app.get('/health', (_req, res) => {
-  res.status(200).json({
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    service: 'ProjectMind AI Express Gateway',
-    version: '1.0.0',
-  });
-});
-
-app.get('/api/v1/health', (_req, res) => {
-  res.status(200).json({
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    service: 'ProjectMind AI Express Gateway',
-    version: '1.0.0',
-  });
-});
 
 // 4. API Routes Mounting
 app.use('/api/v1/projects', projectRoutes);
