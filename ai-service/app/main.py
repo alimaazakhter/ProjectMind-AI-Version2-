@@ -135,6 +135,13 @@ async def start_generate_blueprint(request: BlueprintGenerateRequest):
     return {"jobId": job_id, "status": "processing"}
 
 
+@app.get("/api/v1/ai/debug/trace", tags=["Diagnostics"])
+async def debug_trace():
+    """Recent provider attempts (provider, model, ms, outcome) for latency diagnosis."""
+    from app.services.llm_service import get_trace
+    return {"trace": get_trace()}
+
+
 @app.get("/api/v1/ai/generate/status/{job_id}", tags=["AI Generation"])
 async def generate_status(job_id: str):
     """Poll a generation job. Returns processing / completed (+result) / failed (+detail)."""

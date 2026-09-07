@@ -31,6 +31,18 @@ PER_CALL_TIMEOUT_S = 70.0
 _COOLDOWN: Dict[str, float] = {}
 _DEFAULT_COOLDOWN_S = 60.0
 
+# Rolling trace of the most recent provider attempts (for /debug/trace diagnostics).
+from collections import deque
+_TRACE: "deque[Dict[str, Any]]" = deque(maxlen=60)
+
+
+def _trace(provider: str, model: str, ms: int, outcome: str) -> None:
+    _TRACE.append({"provider": provider, "model": model, "ms": ms, "outcome": outcome, "at": time.strftime("%H:%M:%S")})
+
+
+def get_trace() -> List[Dict[str, Any]]:
+    return list(_TRACE)
+
 
 class QuotaExceededError(RuntimeError):
     """Raised when every candidate across every provider is rate-limited (429)."""
@@ -280,20 +292,23 @@ class LLMService:
             json_mode = want_json and cfg.get("json_mode", False)
             max_tokens = cfg.get("max_tokens", 8192) if want_json else 1024
             key = f"{provider}:{model}"
+            t0 = time.time()
             try:
                 if cfg["kind"] == "gemini":
                     raw = await self._gemini_call(model, prompt, system, json_mode, max_tokens)
                 else:
                     raw = await self._openai_call(provider, model, prompt, system, json_mode, max_tokens)
 
-                if want_json:
-                    return json.loads(_repair_json(raw))
-                return raw
+                result = json.loads(_repair_json(raw)) if want_json else raw
+                _trace(provider, model, int((time.time() - t0) * 1000), "ok")
+                return result
 
             except asyncio.TimeoutError:
+                _trace(provider, model, int((time.time() - t0) * 1000), "timeout")
                 logger.warning(f"{key} exceeded {PER_CALL_TIMEOUT_S:.0f}s; trying next candidate.")
                 last_error = RuntimeError(f"{key} timed out")
             except json.JSONDecodeError as err:
+                _trace(provider, model, int((time.time() - t0) * 1000), "bad_json")
                 logger.error(f"{key} returned unparseable JSON: {err}")
                 last_error = err
             except Exception as err:
@@ -301,8 +316,10 @@ class LLMService:
                 if _is_quota_error_text(text):
                     quota_hits += 1
                     _COOLDOWN[key] = time.time() + _retry_delay_from_error(text)
+                    _trace(provider, model, int((time.time() - t0) * 1000), "429")
                     logger.warning(f"{key} rate-limited (429); cooling down and skipping.")
                 else:
+                    _trace(provider, model, int((time.time() - t0) * 1000), f"err:{text[:40]}")
                     logger.warning(f"{key} failed: {text[:180]}. Trying next candidate.")
                 last_error = err
 
