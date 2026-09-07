@@ -1,3 +1,4 @@
+import re
 import logging
 import asyncio
 from typing import Dict, Any
@@ -79,6 +80,14 @@ class MultiAgentOrchestrator:
             architecture_summary=arch_summary,
         )
 
+        # Sort the roadmap by the phase number in its title ("Phase 3: ...") so the
+        # timeline always reads 1 -> N, even if the model emitted the phases out of order.
+        def _phase_num(item: Dict[str, Any]) -> int:
+            m = re.search(r"phase\s*(\d+)", str(item.get("phase", "")), re.IGNORECASE)
+            return int(m.group(1)) if m else 999
+
+        roadmap_sorted = sorted(architect_data.get("roadmap", []), key=_phase_num)
+
         # Assemble the final blueprint strictly from real agent output.
         final_payload = {
             "title": resolved_title,
@@ -101,7 +110,7 @@ class MultiAgentOrchestrator:
                 "diagramDescription": "Client -> Express :5000 -> FastAPI :8000 -> PostgreSQL",
             }),
             "tech_stack": architect_data.get("tech_stack", []),
-            "roadmap": architect_data.get("roadmap", []),
+            "roadmap": roadmap_sorted,
             "datasets": research_data.get("datasets", []),
             "research_references": research_data.get("research_references", []),
             "viva_questions": viva_data.get("viva_questions", []),

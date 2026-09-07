@@ -1290,11 +1290,20 @@ export class SupabaseService {
       item: t.technology_name,
       rationale: t.justification,
     }));
-    const road = (p.project_roadmaps || []).map((r: any) => ({
-      phase: r.phase_title,
-      duration: r.duration,
-      tasks: r.tasks || [],
-    }));
+    const road = (p.project_roadmaps || [])
+      .slice()
+      // Order by the phase number so the timeline always reads 1 -> N (Supabase returns
+      // nested rows unordered, and older records may have been stored out of order).
+      .sort((a: any, b: any) => {
+        const na = parseInt(String(a.phase_title || '').match(/phase\s*(\d+)/i)?.[1] ?? a.phase_number ?? 999, 10);
+        const nb = parseInt(String(b.phase_title || '').match(/phase\s*(\d+)/i)?.[1] ?? b.phase_number ?? 999, 10);
+        return na - nb;
+      })
+      .map((r: any) => ({
+        phase: r.phase_title,
+        duration: r.duration,
+        tasks: r.tasks || [],
+      }));
     const datasets = (p.project_references || [])
       .filter((r: any) => r.type === 'dataset')
       .map((d: any) => ({ name: d.title, source: d.source_url, description: d.description }));
