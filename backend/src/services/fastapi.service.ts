@@ -30,7 +30,10 @@ export class FastAPIService {
         agentMode: payload.agentMode || 'multi',
         customRequirements: payload.customRequirements || null,
       }, {
-        timeout: 30000,
+        // Generous timeout: a cold-started AI worker (Render free spins down after ~15
+        // min idle) takes ~50s to wake before it can even accept the job. A short timeout
+        // here made the first generation after idle fail with a 502.
+        timeout: 90000,
         headers: { 'Content-Type': 'application/json' },
       });
 
