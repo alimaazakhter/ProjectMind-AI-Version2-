@@ -6,6 +6,7 @@ import { validateBody, generatorPayloadSchema, chatPayloadSchema } from '../midd
 const router = Router();
 
 router.post('/generate-blueprint', requireAuth, validateBody(generatorPayloadSchema), AIController.generateBlueprint);
+router.get('/generate-blueprint/status/:jobId', requireAuth, AIController.getGenerationStatus);
 router.post('/chat', requireAuth, validateBody(chatPayloadSchema), AIController.chat);
 router.get('/chat/sessions', requireAuth, AIController.getChatSessions);
 router.get('/chat/sessions/:id/messages', requireAuth, AIController.getChatSessionMessages);

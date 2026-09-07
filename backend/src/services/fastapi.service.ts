@@ -17,7 +17,8 @@ export class FastAPIService {
    */
   static async generateBlueprint(payload: ProjectRequirement, userId: string): Promise<Omit<ProjectBlueprint, 'id' | 'created_at' | 'updated_at'>> {
     try {
-      const response = await axios.post(`${this.baseURL}/generate`, {
+      // 1. Start the generation job on the AI worker (returns immediately with a jobId).
+      const startRes = await axios.post(`${this.baseURL}/generate`, {
         // Pass an empty title through untouched so the AI service can auto-synthesize a
         // NOVEL title (using the variation seed in customRequirements). Substituting the
         // domain name here would make every blank-title generation identical.
@@ -29,16 +30,38 @@ export class FastAPIService {
         agentMode: payload.agentMode || 'multi',
         customRequirements: payload.customRequirements || null,
       }, {
-        // The multi-agent pipeline makes several sequential Gemini calls. With the fast
-        // model (gemini-3.5-flash) a full blueprint completes in ~40-70s. When the fast
-        // models' daily free-tier quota is exhausted the pipeline falls back to slower
-        // models, so we allow generous headroom (280s) to avoid a false timeout that
-        // would surface as an "AI unavailable" 502 in the UI.
-        timeout: 280000,
+        timeout: 30000,
         headers: { 'Content-Type': 'application/json' },
       });
 
-      const data = response.data;
+      const jobId = startRes.data?.jobId;
+      if (!jobId) throw new Error('AI worker did not return a job id.');
+
+      // 2. Poll the worker for completion. Each poll is a short request, so neither this
+      //    hop nor the browser->backend hop is ever held long enough to hit the ~100s
+      //    edge/proxy timeout — the generation itself can take as long as it needs.
+      const deadline = Date.now() + 5 * 60 * 1000; // 5 minutes
+      let data: any = null;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 3000));
+        let statusRes;
+        try {
+          statusRes = await axios.get(`${this.baseURL}/generate/status/${jobId}`, { timeout: 20000 });
+        } catch (pollErr: any) {
+          if (pollErr?.response?.status === 404) throw new Error('Generation job expired on the AI worker.');
+          continue; // transient hiccup — keep polling until the deadline
+        }
+        const s = statusRes.data;
+        if (s.status === 'completed') { data = s.result; break; }
+        if (s.status === 'failed') {
+          const rateErr: any = new Error(s.detail || 'AI generation failed.');
+          if (s.errorStatus === 429) rateErr.statusCode = 429;
+          throw rateErr;
+        }
+        // status === 'processing' → keep polling
+      }
+      if (!data) throw new Error('AI generation timed out on the worker.');
+
       return {
         user_id: userId,
         title: data.title || payload.titleIdea,
@@ -65,6 +88,11 @@ export class FastAPIService {
         uniquifier_suggestions: data.uniquifier_suggestions || [],
       };
     } catch (error: any) {
+      // A failure we deliberately raised while polling (e.g. the worker reported the job
+      // failed / rate-limited) already carries the right message and statusCode — pass it
+      // through unchanged instead of masking it as "service unavailable".
+      if (error?.statusCode) throw error;
+
       const httpStatus = error?.response?.status;
       const detail = error?.response?.data?.detail || error?.message || 'Unknown error';
       console.error(

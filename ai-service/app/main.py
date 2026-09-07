@@ -1,6 +1,8 @@
+import asyncio
 import logging
 import time
-from typing import Optional
+import uuid
+from typing import Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -90,27 +92,59 @@ async def update_ai_config(payload: AIConfigUpdateRequest):
         "data": updated,
     }
 
-# Multi-Agent Blueprint Generation
-@app.post(
-    "/api/v1/ai/generate",
-    response_model=BlueprintResponse,
-    status_code=status.HTTP_200_OK,
-    tags=["AI Generation"],
-)
-async def generate_blueprint(request: BlueprintGenerateRequest):
+# ----------------------------------------------------------------------------
+# Async Blueprint Generation
+#
+# A full generation takes 90–200s, which exceeds the ~100s edge/proxy timeout that
+# fronts most PaaS (Render/Cloudflare). A synchronous endpoint therefore gets its
+# connection cut and returns 502 even when the work is fine. So generation runs as a
+# background asyncio task: POST /generate returns a jobId immediately, and the caller
+# polls GET /generate/status/{jobId}. Every HTTP request stays short.
+# ----------------------------------------------------------------------------
+_GEN_JOBS: Dict[str, Dict[str, Any]] = {}
+_JOB_TTL_S = 30 * 60  # evict finished jobs after 30 minutes
+
+
+def _sweep_jobs() -> None:
+    now = time.time()
+    for jid in [j for j, v in _GEN_JOBS.items() if now - v.get("created", now) > _JOB_TTL_S]:
+        _GEN_JOBS.pop(jid, None)
+
+
+async def _run_generation(job_id: str, request: BlueprintGenerateRequest) -> None:
     try:
-        logger.info(f"Received Blueprint Generation Request for '{request.title_idea}' in [{request.domain}]")
         result = await MultiAgentOrchestrator.generate_blueprint(request)
-        return result
+        _GEN_JOBS[job_id].update(status="completed", result=result)
     except QuotaExceededError as err:
         logger.warning(f"Blueprint generation rate-limited: {err}")
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(err))
+        _GEN_JOBS[job_id].update(status="failed", error=str(err), error_status=429)
     except Exception as err:
         logger.error(f"Blueprint generation failed: {err}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"AI Blueprint Generation failed: {str(err)}",
-        )
+        _GEN_JOBS[job_id].update(status="failed", error=f"AI Blueprint Generation failed: {str(err)}", error_status=502)
+
+
+@app.post("/api/v1/ai/generate", status_code=status.HTTP_202_ACCEPTED, tags=["AI Generation"])
+async def start_generate_blueprint(request: BlueprintGenerateRequest):
+    """Start generation in the background and return a job id to poll."""
+    _sweep_jobs()
+    job_id = str(uuid.uuid4())
+    _GEN_JOBS[job_id] = {"status": "processing", "created": time.time()}
+    logger.info(f"Queued Blueprint Generation job {job_id} for '{request.title_idea}' [{request.domain}]")
+    asyncio.create_task(_run_generation(job_id, request))
+    return {"jobId": job_id, "status": "processing"}
+
+
+@app.get("/api/v1/ai/generate/status/{job_id}", tags=["AI Generation"])
+async def generate_status(job_id: str):
+    """Poll a generation job. Returns processing / completed (+result) / failed (+detail)."""
+    job = _GEN_JOBS.get(job_id)
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Generation job not found or expired.")
+    if job["status"] == "completed":
+        return {"status": "completed", "result": job["result"]}
+    if job["status"] == "failed":
+        return {"status": "failed", "detail": job.get("error"), "errorStatus": job.get("error_status", 502)}
+    return {"status": "processing"}
 
 # Conversational AI Assistant & Intent Classification
 @app.post(

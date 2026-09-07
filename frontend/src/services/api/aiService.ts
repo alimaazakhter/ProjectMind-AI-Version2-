@@ -48,15 +48,51 @@ export class AIService {
       if (token) headers['Authorization'] = `Bearer ${token}`;
       const { userId: _userId, ...requestPayload } = payload;
 
-      const res = await fetch(`${EXPRESS_BASE_URL}/ai/generate-blueprint`, {
+      // 1. Start the async generation job. This returns immediately (202) with a jobId,
+      //    so the request is never held long enough to hit the ~100s edge timeout.
+      const startRes = await fetch(`${EXPRESS_BASE_URL}/ai/generate-blueprint`, {
         method: 'POST',
         headers,
         body: JSON.stringify(requestPayload),
       });
+      if (!startRes.ok) throw new Error(`AI Generation request failed with HTTP ${startRes.status}`);
+      const startData = await startRes.json();
+      const jobId: string | undefined = startData?.data?.jobId;
+      if (!jobId) throw new Error('AI Generation did not start (no job id returned).');
 
-      if (!res.ok) throw new Error(`AI Generation request failed with HTTP ${res.status}`);
-      const data = await res.json();
-      return data.data || data;
+      // 2. Poll for the result. Each poll is a fast request; generation itself runs in the
+      //    background on the server, so no single request is ever long-lived.
+      const pollHeaders: Record<string, string> = {};
+      if (token) pollHeaders['Authorization'] = `Bearer ${token}`;
+      const startedAt = Date.now();
+      const MAX_WAIT_MS = 5 * 60 * 1000; // 5 minutes
+      const POLL_INTERVAL_MS = 3000;
+
+      // small delay helper
+      const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+      while (Date.now() - startedAt < MAX_WAIT_MS) {
+        await wait(POLL_INTERVAL_MS);
+        const statusRes = await fetch(`${EXPRESS_BASE_URL}/ai/generate-blueprint/status/${jobId}`, {
+          headers: pollHeaders,
+          cache: 'no-store',
+        });
+        // Transient network/edge hiccup while polling — keep trying until the deadline.
+        if (!statusRes.ok && statusRes.status !== 404) continue;
+
+        const statusData = await statusRes.json();
+        if (statusData.status === 'completed') {
+          return statusData.data;
+        }
+        if (statusData.status === 'failed') {
+          throw new Error(statusData.message || 'AI generation failed.');
+        }
+        if (statusData.status === 'not_found') {
+          throw new Error('Generation job expired or was lost. Please try again.');
+        }
+        // status === 'processing' → keep polling
+      }
+      throw new Error('AI generation timed out. The service may be busy — please try again.');
     } catch (err) {
       // No client-side fake blueprint: re-throw so the UI can surface a real error
       // instead of silently rendering synthetic/generic project content (BUG 16).
