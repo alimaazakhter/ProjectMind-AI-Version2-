@@ -273,7 +273,10 @@ class LLMService:
             resp = await client.post(f"{cfg['base_url']}/chat/completions", headers=headers, json=body)
         if resp.status_code == 429 or resp.status_code == 402:
             raise RuntimeError(f"429 rate limit / quota on {provider}:{model} — {resp.text[:160]}")
-        resp.raise_for_status()
+        if resp.status_code >= 400:
+            # Surface the provider's actual error body (e.g. model_not_found) instead of a
+            # generic 'Client error 404', so misconfigured models are diagnosable.
+            raise RuntimeError(f"HTTP {resp.status_code} on {provider}:{model} — {resp.text[:180]}")
         data = resp.json()
         return (data["choices"][0]["message"]["content"] or "").strip()
 
