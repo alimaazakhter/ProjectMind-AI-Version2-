@@ -65,7 +65,7 @@ export class AIService {
       const pollHeaders: Record<string, string> = {};
       if (token) pollHeaders['Authorization'] = `Bearer ${token}`;
       const startedAt = Date.now();
-      const MAX_WAIT_MS = 5 * 60 * 1000; // 5 minutes
+      const MAX_WAIT_MS = 8 * 60 * 1000; // 8 minutes (free-tier cold start + slow-quota fallback)
       const POLL_INTERVAL_MS = 3000;
 
       // small delay helper

@@ -40,7 +40,7 @@ export class FastAPIService {
       // 2. Poll the worker for completion. Each poll is a short request, so neither this
       //    hop nor the browser->backend hop is ever held long enough to hit the ~100s
       //    edge/proxy timeout — the generation itself can take as long as it needs.
-      const deadline = Date.now() + 5 * 60 * 1000; // 5 minutes
+      const deadline = Date.now() + 8 * 60 * 1000; // 8 minutes (free-tier cold start + slow-quota fallback)
       let data: any = null;
       while (Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, 3000));
@@ -127,7 +127,9 @@ export class FastAPIService {
         projectContext: projectContext || null,
         conversationHistory: history || [],
       }, {
-        timeout: 45000,
+        // Generous timeout so a cold-started AI worker (Render free spins down after
+        // ~15 min idle and takes ~50s to wake) doesn't fail an otherwise-fast chat call.
+        timeout: 90000,
         headers: { 'Content-Type': 'application/json' },
       });
 
