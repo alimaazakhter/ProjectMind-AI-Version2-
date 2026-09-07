@@ -59,7 +59,9 @@ PROVIDERS: Dict[str, Dict[str, Any]] = {
         "api_key": lambda: settings.GROQ_API_KEY,
         "json_mode": True,
         "max_tokens": 8192,
-        "models": ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"],
+        # Verified against the account's live /models list (Sept 2026). gpt-oss-20b is the
+        # fastest (~1000 tok/s); gpt-oss-120b and qwen are quality fallbacks.
+        "models": ["openai/gpt-oss-20b", "openai/gpt-oss-120b", "qwen/qwen3.8-27b"],
     },
     "gemini": {
         "kind": "gemini",
@@ -83,9 +85,9 @@ PROVIDERS: Dict[str, Dict[str, Any]] = {
         "json_mode": False,
         "max_tokens": 8192,
         "models": [
-            "meta-llama/llama-3.3-70b-instruct:free",
-            "google/gemini-2.0-flash-exp:free",
-            "mistralai/mistral-small-3.2-24b-instruct:free",
+            "inclusionai/ling-3.0-flash-sante:free",
+            "inclusionai/ling-3.0-flash-fin:free",
+            "liquid/lfm-2.5-2.6b:free",
         ],
         "extra_headers": {
             "HTTP-Referer": "https://projectmind-ai.vercel.app",
@@ -98,7 +100,8 @@ PROVIDERS: Dict[str, Dict[str, Any]] = {
         "api_key": lambda: settings.MISTRAL_API_KEY,
         "json_mode": True,
         "max_tokens": 8192,
-        "models": ["mistral-small-latest", "open-mistral-nemo"],
+        # Verified against the account's live /models list (Sept 2026).
+        "models": ["mistral-small-latest", "ministral-8b-latest", "mistral-medium-latest"],
     },
 }
 
