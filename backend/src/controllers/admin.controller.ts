@@ -266,8 +266,8 @@ export class AdminController {
    */
   static async updateAIConfig(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { model, temperature } = req.body;
-      const updated = await FastAPIService.updateAIConfig({ model, temperature });
+      const { model, temperature, provider } = req.body;
+      const updated = await FastAPIService.updateAIConfig({ model, temperature, provider });
       res.status(200).json({
         success: true,
         message: 'AI model configuration updated successfully.',

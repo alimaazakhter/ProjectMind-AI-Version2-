@@ -42,6 +42,7 @@ app.add_middleware(
 class AIConfigUpdateRequest(BaseModel):
     model: Optional[str] = None
     temperature: Optional[float] = None
+    provider: Optional[str] = None
 
 # Health / Readiness Probe
 @app.get("/health", tags=["Health"])
@@ -85,7 +86,7 @@ async def get_ai_config():
 
 @app.post("/api/v1/ai/config", tags=["Admin Configuration"])
 async def update_ai_config(payload: AIConfigUpdateRequest):
-    updated = gemini_client.set_config(model_name=payload.model, temperature=payload.temperature)
+    updated = gemini_client.set_config(model_name=payload.model, temperature=payload.temperature, provider=payload.provider)
     return {
         "success": True,
         "message": "AI configuration updated successfully.",

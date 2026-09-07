@@ -72,7 +72,8 @@ export default function AdminDashboardPage() {
   const [isPinging, setIsPinging] = useState(false);
 
   // Model Updating State
-  const [selectedModel, setSelectedModel] = useState<string>('gemini-3.5-flash-lite');
+  const [selectedModel, setSelectedModel] = useState<string>('');
+  const [selectedProvider, setSelectedProvider] = useState<string>('groq');
   const [selectedTemp, setSelectedTemp] = useState<number>(0.4);
   const [isUpdatingAI, setIsUpdatingAI] = useState(false);
 
@@ -169,6 +170,7 @@ export default function AdminDashboardPage() {
       setAIConfig(data);
       if (data) {
         setSelectedModel(data.active_model);
+        if (data.active_provider) setSelectedProvider(data.active_provider);
         setSelectedTemp(data.temperature || 0.4);
       }
     } catch {
@@ -221,11 +223,12 @@ export default function AdminDashboardPage() {
     setIsUpdatingAI(true);
     try {
       const updated = await AdminService.updateAIConfig(
-        { model: selectedModel, temperature: selectedTemp },
+        { provider: selectedProvider, model: selectedModel || undefined, temperature: selectedTemp },
         passcode
       );
       setAIConfig(updated);
-      showNotification(`Active Gemini model switched to '${selectedModel}'.`);
+      if (updated?.active_model) setSelectedModel(updated.active_model);
+      showNotification(`AI engine updated — provider '${selectedProvider}'${selectedModel ? `, model '${selectedModel}'` : ''}.`);
     } catch {
       showNotification('Failed to update AI model configuration.', true);
     } finally {
@@ -939,28 +942,55 @@ export default function AdminDashboardPage() {
           <div>
             <h2 className="text-base font-bold text-[#202020] flex items-center gap-2">
               <Sliders className="w-4 h-4 text-[#7A263A]" />
-              Google Gemini AI Engine & Model Configuration
+              Multi-Provider AI Engine & Model Configuration
             </h2>
             <p className="text-xs text-[#666666] mt-0.5">
-              Live connection to Python FastAPI AI microservice. Switch active Gemini foundation models and adjust generation parameters safely at runtime.
+              Live connection to the Python FastAPI AI engine. Pick the active provider (Groq / Gemini / OpenRouter / Mistral) — the others act as automatic failover when a provider is rate-limited. Adjust the model and temperature at runtime.
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Active Model Selector */}
+            {/* Active Provider + Model Selector */}
             <div className="p-5 rounded-xl bg-[#FAF8F5] border border-[#EBE6DF] space-y-4">
               <label className="block text-xs font-bold text-[#202020] uppercase font-mono tracking-wider">
-                Select Active Gemini Model
+                Active Provider (tried first)
               </label>
+              <div className="grid grid-cols-2 gap-2">
+                {(aiConfig?.providers || [
+                  { name: 'groq', configured: false, models: [] },
+                  { name: 'gemini', configured: false, models: [] },
+                  { name: 'openrouter', configured: false, models: [] },
+                  { name: 'mistral', configured: false, models: [] },
+                ]).map((p) => (
+                  <button
+                    key={p.name}
+                    type="button"
+                    disabled={!p.configured}
+                    onClick={() => { setSelectedProvider(p.name); setSelectedModel(''); }}
+                    className={`p-2.5 rounded-xl border text-left transition-all ${
+                      selectedProvider === p.name
+                        ? 'bg-[#7A263A]/10 border-[#7A263A] text-[#7A263A]'
+                        : p.configured
+                        ? 'bg-white border-[#EBE6DF] text-[#333333] hover:bg-[#F6F2EB]'
+                        : 'bg-white/50 border-[#EBE6DF] text-[#AAAAAA] cursor-not-allowed'
+                    }`}
+                  >
+                    <span className="text-xs font-bold font-mono capitalize block">{p.name}</span>
+                    <span className={`text-[9px] uppercase font-mono ${p.configured ? 'text-emerald-700' : 'text-[#BBBBBB]'}`}>
+                      {p.configured ? '● connected' : 'no key'}
+                    </span>
+                    {p.name === 'groq' && (
+                      <span className="text-[8px] text-[#875F34] font-mono block">fastest</span>
+                    )}
+                  </button>
+                ))}
+              </div>
 
-              <div className="space-y-2">
-                {(aiConfig?.available_models || [
-                  'gemini-3.5-flash-lite',
-                  'gemini-3.5-flash',
-                  'gemini-flash-latest',
-                  'gemini-2.5-flash',
-                  'gemini-2.5-pro',
-                ]).map((m) => (
+              <label className="block text-xs font-bold text-[#202020] uppercase font-mono tracking-wider pt-1">
+                Model ({selectedProvider})
+              </label>
+              <div className="space-y-2 max-h-56 overflow-y-auto">
+                {((aiConfig?.providers || []).find((p) => p.name === selectedProvider)?.models || []).map((m) => (
                   <label
                     key={m}
                     className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${
@@ -978,15 +1008,11 @@ export default function AdminDashboardPage() {
                         onChange={(e) => setSelectedModel(e.target.value)}
                         className="accent-[#7A263A]"
                       />
-                      <span className="text-xs font-mono">{m}</span>
+                      <span className="text-xs font-mono break-all">{m}</span>
                     </div>
-                    {m === 'gemini-3.5-flash-lite' && (
-                      <span className="text-[9px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200 uppercase font-mono">
-                        Fastest / Stable
-                      </span>
-                    )}
                   </label>
                 ))}
+                <p className="text-[10px] text-[#888888] font-mono px-1">Leave unselected to use the provider's default + auto-fallback.</p>
               </div>
             </div>
 

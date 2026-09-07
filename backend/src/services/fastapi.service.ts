@@ -208,9 +208,9 @@ export class FastAPIService {
   /**
    * Update AI engine configuration on FastAPI worker.
    */
-  static async updateAIConfig(payload: { model?: string; temperature?: number }): Promise<any> {
+  static async updateAIConfig(payload: { model?: string; temperature?: number; provider?: string }): Promise<any> {
     const res = await axios.post(`${this.baseURL}/config`, payload, {
-      timeout: 3000,
+      timeout: 5000,
       headers: { 'Content-Type': 'application/json' },
     });
     return res.data.data;

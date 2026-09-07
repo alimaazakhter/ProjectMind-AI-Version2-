@@ -75,6 +75,10 @@ export interface AdminChatLog {
 
 export interface AdminAIConfig {
   active_model: string;
+  active_provider?: string;
+  provider_order?: string[];
+  configured_providers?: string[];
+  providers?: { name: string; configured: boolean; models: string[] }[];
   fallback_models: string[];
   available_models: string[];
   temperature: number;
@@ -214,7 +218,7 @@ export class AdminService {
    * Update AI Model Configuration.
    */
   static async updateAIConfig(
-    payload: { model?: string; temperature?: number },
+    payload: { model?: string; temperature?: number; provider?: string },
     passcode?: string
   ): Promise<AdminAIConfig> {
     const res = await fetch(`${EXPRESS_BASE_URL}/admin/ai-config`, {
