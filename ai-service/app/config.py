@@ -13,8 +13,10 @@ class Settings(BaseSettings):
     # Active provider the engine tries FIRST (falls back to the others automatically).
     # Groq is default because it is by far the fastest free option.
     LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "groq")
-    # Priority order for automatic failover across providers.
-    LLM_PROVIDER_ORDER: str = os.getenv("LLM_PROVIDER_ORDER", "groq,gemini,openrouter,mistral")
+    # Priority order for automatic failover across providers. Ordered fastest-first
+    # (measured): Groq & Mistral respond in ~2-3s; Gemini is fast when its quota isn't
+    # exhausted; OpenRouter's free models are queued and slow (~30s) so they are last.
+    LLM_PROVIDER_ORDER: str = os.getenv("LLM_PROVIDER_ORDER", "groq,mistral,gemini,openrouter")
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "8000"))
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
