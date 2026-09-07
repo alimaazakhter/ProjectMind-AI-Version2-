@@ -142,6 +142,33 @@ async def debug_trace():
     return {"trace": get_trace()}
 
 
+@app.get("/api/v1/ai/debug/models", tags=["Diagnostics"])
+async def debug_models():
+    """Ask each configured OpenAI-compatible provider (Groq/Mistral/OpenRouter) which model
+    IDs it actually offers for this account, so we use valid, non-404 model names."""
+    import httpx
+    from app.services.llm_service import PROVIDERS, llm_client
+    out: dict = {}
+    for name, cfg in PROVIDERS.items():
+        if cfg["kind"] != "openai":
+            continue
+        key = llm_client._key(name)
+        if not key:
+            out[name] = "no key"
+            continue
+        try:
+            async with httpx.AsyncClient(timeout=20) as client:
+                r = await client.get(f"{cfg['base_url']}/models", headers={"Authorization": f"Bearer {key}"})
+            if r.status_code >= 400:
+                out[name] = f"HTTP {r.status_code}: {r.text[:120]}"
+            else:
+                ids = [m.get("id") for m in r.json().get("data", [])]
+                out[name] = ids[:40]
+        except Exception as e:
+            out[name] = f"error: {str(e)[:120]}"
+    return out
+
+
 @app.get("/api/v1/ai/generate/status/{job_id}", tags=["AI Generation"])
 async def generate_status(job_id: str):
     """Poll a generation job. Returns processing / completed (+result) / failed (+detail)."""
