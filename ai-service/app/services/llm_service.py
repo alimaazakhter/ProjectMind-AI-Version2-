@@ -24,7 +24,10 @@ from app.config import settings
 logger = logging.getLogger("llm-service")
 
 # A single call must never hang the pipeline; hard-capped well under the gateway budget.
-PER_CALL_TIMEOUT_S = 70.0
+# Kept tight because the primary provider (Groq) answers in ~3-10s — a call that runs
+# much longer is a quota-exhausted fallback (e.g. Gemini) worth abandoning fast so the
+# next provider is tried instead of burning 70s on one stuck attempt.
+PER_CALL_TIMEOUT_S = 40.0
 
 # Process-level cooldown for (provider:model) entries that returned 429 (quota/rate limit),
 # so we stop paying the round-trip on an exhausted model for a while.
