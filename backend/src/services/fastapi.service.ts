@@ -15,13 +15,16 @@ export class FastAPIService {
    * caller can surface it instead of silently returning generic/synthetic
    * blueprint content (which previously made every domain look identical).
    */
-  static async generateBlueprint(payload: ProjectRequirement, userId: string): Promise<Omit<ProjectBlueprint, 'id' | 'created_at' | 'updated_at'>> {
+  /**
+   * Start generation on the AI worker and return the worker's jobId immediately.
+   * The heavy work runs on the worker (which holds the job), so the backend never keeps
+   * its own long-lived background task — that in-memory task was lost whenever the free
+   * backend instance recycled, which surfaced as an 8-minute "generation timed out".
+   */
+  static async startBlueprintGeneration(payload: ProjectRequirement): Promise<string> {
     try {
-      // 1. Start the generation job on the AI worker (returns immediately with a jobId).
       const startRes = await axios.post(`${this.baseURL}/generate`, {
-        // Pass an empty title through untouched so the AI service can auto-synthesize a
-        // NOVEL title (using the variation seed in customRequirements). Substituting the
-        // domain name here would make every blank-title generation identical.
+        // Empty title passes through so the worker auto-synthesizes a NOVEL title.
         titleIdea: payload.titleIdea || '',
         domain: payload.domain,
         skillLevel: payload.skillLevel || 'intermediate',
@@ -30,90 +33,84 @@ export class FastAPIService {
         agentMode: payload.agentMode || 'multi',
         customRequirements: payload.customRequirements || null,
       }, {
-        // Generous timeout: a cold-started AI worker (Render free spins down after ~15
-        // min idle) takes ~50s to wake before it can even accept the job. A short timeout
-        // here made the first generation after idle fail with a 502.
+        // 90s so a cold-started worker (Render free ~50-70s wake) can still accept the job.
         timeout: 90000,
         headers: { 'Content-Type': 'application/json' },
       });
-
       const jobId = startRes.data?.jobId;
       if (!jobId) throw new Error('AI worker did not return a job id.');
-
-      // 2. Poll the worker for completion. Each poll is a short request, so neither this
-      //    hop nor the browser->backend hop is ever held long enough to hit the ~100s
-      //    edge/proxy timeout — the generation itself can take as long as it needs.
-      const deadline = Date.now() + 8 * 60 * 1000; // 8 minutes (free-tier cold start + slow-quota fallback)
-      let data: any = null;
-      while (Date.now() < deadline) {
-        await new Promise((r) => setTimeout(r, 3000));
-        let statusRes;
-        try {
-          statusRes = await axios.get(`${this.baseURL}/generate/status/${jobId}`, { timeout: 20000 });
-        } catch (pollErr: any) {
-          if (pollErr?.response?.status === 404) throw new Error('Generation job expired on the AI worker.');
-          continue; // transient hiccup — keep polling until the deadline
-        }
-        const s = statusRes.data;
-        if (s.status === 'completed') { data = s.result; break; }
-        if (s.status === 'failed') {
-          const rateErr: any = new Error(s.detail || 'AI generation failed.');
-          if (s.errorStatus === 429) rateErr.statusCode = 429;
-          throw rateErr;
-        }
-        // status === 'processing' → keep polling
-      }
-      if (!data) throw new Error('AI generation timed out on the worker.');
-
-      return {
-        user_id: userId,
-        title: data.title || payload.titleIdea,
-        tagline: data.tagline || '',
-        domain: data.domain || payload.domain,
-        complexity: data.complexity || payload.complexity,
-        agent_mode: data.agent_mode || payload.agentMode,
-        abstract: data.abstract || '',
-        problem_statement: data.problem_statement || '',
-        literature_review: data.literature_review || '',
-        methodology: data.methodology || [],
-        algorithms_used: data.algorithms_used || [],
-        why_useful: data.why_useful || [],
-        real_world_applications: data.real_world_applications || [],
-        objectives: data.objectives || [],
-        features: data.features || [],
-        tech_stack: data.tech_stack || [],
-        architecture: data.architecture || { summary: '', components: [], diagramDescription: '' },
-        datasets: data.datasets || [],
-        research_references: data.research_references || [],
-        roadmap: data.roadmap || [],
-        viva_questions: data.viva_questions || [],
-        starter_code: data.starter_code || [],
-        uniquifier_suggestions: data.uniquifier_suggestions || [],
-      };
+      return jobId;
     } catch (error: any) {
-      // A failure we deliberately raised while polling (e.g. the worker reported the job
-      // failed / rate-limited) already carries the right message and statusCode — pass it
-      // through unchanged instead of masking it as "service unavailable".
-      if (error?.statusCode) throw error;
-
       const httpStatus = error?.response?.status;
       const detail = error?.response?.data?.detail || error?.message || 'Unknown error';
       console.error(
-        `[FastAPIService] Blueprint generation failed at ${this.baseURL}/generate` +
-          (httpStatus ? ` (HTTP ${httpStatus})` : '') +
-          `: ${detail}`
+        `[FastAPIService] Failed to start generation at ${this.baseURL}/generate` +
+          (httpStatus ? ` (HTTP ${httpStatus})` : '') + `: ${detail}`
       );
       if (httpStatus === 429) {
-        const rateErr: any = new Error(
-          `AI generation is temporarily rate-limited: ${detail} Please wait a moment and try again.`
-        );
+        const rateErr: any = new Error(`AI generation is temporarily rate-limited: ${detail} Please try again.`);
         rateErr.statusCode = 429;
         throw rateErr;
       }
-      throw new Error(
-        `AI generation service is unavailable. Ensure the Python AI service is running and GEMINI_API_KEY is configured. (${detail})`
-      );
+      throw new Error(`AI generation service is unavailable. Ensure the Python AI service is running. (${detail})`);
     }
+  }
+
+  /**
+   * Poll one worker generation job (a single short request). Returns the current status;
+   * on completion it maps the worker payload into a persistable blueprint.
+   */
+  static async pollBlueprintGeneration(
+    jobId: string,
+    userId: string
+  ): Promise<{ status: 'processing' | 'completed' | 'failed'; blueprint?: Omit<ProjectBlueprint, 'id' | 'created_at' | 'updated_at'>; message?: string; errorStatus?: number }> {
+    let s: any;
+    try {
+      const res = await axios.get(`${this.baseURL}/generate/status/${jobId}`, { timeout: 25000 });
+      s = res.data;
+    } catch (err: any) {
+      if (err?.response?.status === 404) {
+        return { status: 'failed', message: 'Generation job expired on the AI worker. Please try again.' };
+      }
+      // Transient hiccup (worker cold/busy) — tell the caller to keep polling.
+      return { status: 'processing' };
+    }
+    if (s.status === 'completed') {
+      return { status: 'completed', blueprint: this.mapWorkerResult(s.result, userId) };
+    }
+    if (s.status === 'failed') {
+      return { status: 'failed', message: s.detail || 'AI generation failed.', errorStatus: s.errorStatus };
+    }
+    return { status: 'processing' };
+  }
+
+  /** Map the worker's blueprint payload into the shape SupabaseService.createProject expects. */
+  private static mapWorkerResult(data: any, userId: string): Omit<ProjectBlueprint, 'id' | 'created_at' | 'updated_at'> {
+    return {
+      user_id: userId,
+      title: data.title || 'Untitled Project',
+      tagline: data.tagline || '',
+      domain: data.domain || '',
+      complexity: data.complexity || 'Production Grade Architecture',
+      agent_mode: data.agent_mode || 'multi',
+      abstract: data.abstract || '',
+      problem_statement: data.problem_statement || '',
+      literature_review: data.literature_review || '',
+      methodology: data.methodology || [],
+      algorithms_used: data.algorithms_used || [],
+      why_useful: data.why_useful || [],
+      real_world_applications: data.real_world_applications || [],
+      objectives: data.objectives || [],
+      features: data.features || [],
+      tech_stack: data.tech_stack || [],
+      architecture: data.architecture || { summary: '', components: [], diagramDescription: '' },
+      datasets: data.datasets || [],
+      research_references: data.research_references || [],
+      roadmap: data.roadmap || [],
+      viva_questions: data.viva_questions || [],
+      starter_code: data.starter_code || [],
+      uniquifier_suggestions: data.uniquifier_suggestions || [],
+    };
   }
 
   /**

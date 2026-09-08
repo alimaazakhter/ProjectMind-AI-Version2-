@@ -2,17 +2,20 @@ import { Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 import { FastAPIService } from '../services/fastapi.service.js';
 import { SupabaseService } from '../services/supabase.service.js';
-import { JobStore } from '../services/jobStore.js';
+
+// Lightweight per-job maps. Unlike a background task, these only cache metadata; the
+// generation itself lives on the AI worker, so a recycled backend instance at worst
+// forgets the original payload (requirements row skipped) — it never loses the job.
+const jobOwner = new Map<string, string>();
+const jobPayload = new Map<string, any>();
+const jobPersisted = new Map<string, any>();
 
 export class AIController {
   /**
-   * POST /api/v1/ai/generate-blueprint — Start async multi-agent generation.
-   *
-   * Generation takes 90–200s, which exceeds the ~100s edge/proxy timeout on most PaaS
-   * (Render/Cloudflare). So we DON'T hold the HTTP request: we create a job, return its
-   * id immediately (202), and run the real work in the background. The client polls
-   * GET /ai/generate-blueprint/status/:jobId for the result. No single request is ever
-   * held long enough to trip the edge timeout.
+   * POST /api/v1/ai/generate-blueprint — Start generation on the AI worker and return its
+   * jobId immediately. The client then polls the status endpoint. The backend does NOT run
+   * a long background task (that was fragile on free hosting); it simply proxies the
+   * worker's job and persists the result when the client polls and sees it completed.
    */
   static async generateBlueprint(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -22,28 +25,23 @@ export class AIController {
         return;
       }
 
-      const job = JobStore.create(userId);
-      const payload = req.body;
+      let jobId: string;
+      try {
+        jobId = await FastAPIService.startBlueprintGeneration(req.body);
+      } catch (aiError: any) {
+        res.status(aiError?.statusCode === 429 ? 429 : 502).json({
+          success: false,
+          message: aiError?.message || 'AI generation service is unavailable.',
+        });
+        return;
+      }
 
-      // Fire-and-forget: run generation + persistence in the background and record the
-      // outcome on the job. Never throws into the request lifecycle.
-      void (async () => {
-        try {
-          const rawBlueprint = await FastAPIService.generateBlueprint(payload, userId);
-          const persisted = await SupabaseService.createProject(rawBlueprint, userId, payload);
-          JobStore.complete(job.id, persisted);
-        } catch (err: any) {
-          JobStore.fail(
-            job.id,
-            err?.message || 'AI generation failed.',
-            err?.statusCode === 429 ? 429 : 502
-          );
-        }
-      })();
+      jobOwner.set(jobId, userId);
+      jobPayload.set(jobId, req.body);
 
       res.status(202).json({
         success: true,
-        data: { jobId: job.id, status: job.status },
+        data: { jobId, status: 'processing' },
         message: 'Blueprint generation started.',
       });
     } catch (error) {
@@ -52,7 +50,8 @@ export class AIController {
   }
 
   /**
-   * GET /api/v1/ai/generate-blueprint/status/:jobId — Poll an async generation job.
+   * GET /api/v1/ai/generate-blueprint/status/:jobId — Proxy the worker job. On completion,
+   * persist the blueprint to Supabase (once) and return the stored record.
    */
   static async getGenerationStatus(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -61,22 +60,42 @@ export class AIController {
         res.status(401).json({ success: false, message: 'Authentication required.' });
         return;
       }
+      const jobId = String(req.params.jobId);
 
-      const job = JobStore.get(String(req.params.jobId), userId);
-      if (!job) {
-        res.status(404).json({ success: false, status: 'not_found', message: 'Generation job not found or expired.' });
+      // Ownership: enforce when we still remember the owner (backend not recycled).
+      const owner = jobOwner.get(jobId);
+      if (owner && owner !== userId) {
+        res.status(403).json({ success: false, status: 'failed', message: 'You do not have access to this generation job.' });
         return;
       }
 
-      if (job.status === 'completed') {
-        res.status(200).json({ success: true, status: 'completed', data: job.result });
+      // Already persisted (idempotent for repeat polls).
+      if (jobPersisted.has(jobId)) {
+        res.status(200).json({ success: true, status: 'completed', data: jobPersisted.get(jobId) });
         return;
       }
-      if (job.status === 'failed') {
-        res.status(200).json({ success: false, status: 'failed', message: job.error, errorStatus: job.errorStatus });
+
+      const result = await FastAPIService.pollBlueprintGeneration(jobId, userId);
+
+      if (result.status === 'processing') {
+        res.status(200).json({ success: true, status: 'processing' });
         return;
       }
-      res.status(200).json({ success: true, status: 'processing' });
+      if (result.status === 'failed') {
+        res.status(200).json({ success: false, status: 'failed', message: result.message, errorStatus: result.errorStatus });
+        return;
+      }
+
+      // completed → persist once, then return the stored record.
+      try {
+        const persisted = await SupabaseService.createProject(result.blueprint!, userId, jobPayload.get(jobId));
+        jobPersisted.set(jobId, persisted);
+        jobOwner.delete(jobId);
+        jobPayload.delete(jobId);
+        res.status(200).json({ success: true, status: 'completed', data: persisted });
+      } catch (persistErr: any) {
+        res.status(200).json({ success: false, status: 'failed', message: `Generated, but saving failed: ${persistErr?.message || 'unknown error'}` });
+      }
     } catch (error) {
       next(error);
     }
